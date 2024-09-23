@@ -1,0 +1,4 @@
+*.dylib
+.DS_Store
+.idea
+/target

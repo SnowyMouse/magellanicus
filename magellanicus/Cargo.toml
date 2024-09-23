@@ -1,0 +1,9 @@
+[package]
+name = "magellanicus"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+raw-window-handle = "0.5.2"
+vulkano = "0.34"
+vulkano-shaders = "0.34"

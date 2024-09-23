@@ -1,0 +1,9 @@
+[package]
+name = "flycam-test"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+winit = { version = "0.30.5", features = ["rwh_05"] }
+magellanicus = { path = "../magellanicus" }

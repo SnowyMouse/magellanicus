@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "magellanicus",
+    "flycam-test"
+]
+resolver = "2"
