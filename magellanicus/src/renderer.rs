@@ -17,11 +17,12 @@ mod player_viewport;
 pub struct Renderer {
     renderer: VulkanRenderer,
     player_viewports: Vec<PlayerViewport>,
+
     bitmaps: BTreeMap<Arc<String>, Bitmap>,
     shaders: BTreeMap<Arc<String>, Shader>,
     geometries: BTreeMap<Arc<String>, Geometry>,
     skies: BTreeMap<Arc<String>, Sky>,
-    bsp: BSP
+    bsps: BTreeMap<Arc<String>, BSP>
 }
 
 impl Renderer {
@@ -48,18 +49,19 @@ impl Renderer {
             shaders: BTreeMap::new(),
             geometries: BTreeMap::new(),
             skies: BTreeMap::new(),
-            bsp: BSP::default()
+            bsps: BTreeMap::new()
         })
     }
 
-    /// Clear all data.
+    /// Clear all data without resetting the renderer.
     ///
-    /// All objects added with `add_` methods as well as the BSP will be cleared.
+    /// All objects added with `add_` methods will be cleared.
     pub fn reset(&mut self) {
         self.bitmaps.clear();
         self.shaders.clear();
         self.geometries.clear();
-        self.bsp = BSP::default();
+        self.skies.clear();
+        self.bsps.clear();
     }
 
     /// Add a bitmap with the given parameters.

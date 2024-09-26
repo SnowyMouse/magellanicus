@@ -114,6 +114,12 @@ impl VulkanMaterialVertexBuffers {
             indices: indices_buf
         };
 
+        debug_assert_eq!(buffers.positions.len(), buffers.normals.len());
+        debug_assert_eq!(buffers.positions.len(), buffers.binormals.len());
+        debug_assert_eq!(buffers.positions.len(), buffers.tangents.len());
+        debug_assert_eq!(buffers.positions.len(), buffers.texture_coords.len());
+        debug_assert!(buffers.lightmap_coords.is_none() || buffers.lightmap_coords.as_ref().is_some_and(|l| l.len() == buffers.positions.len()));
+
         Ok(Arc::new(buffers))
     }
 }

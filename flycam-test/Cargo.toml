@@ -7,3 +7,7 @@ publish = false
 [dependencies]
 winit = { version = "0.30.5", features = ["rwh_05"] }
 magellanicus = { path = "../magellanicus" }
+ringhopper = { git = "https://github.com/FishAndRips/ringhopper" }
+ringhopper-engines = { git = "https://github.com/FishAndRips/ringhopper" }
+clap = { version = "4.5.18", features = ["derive"] }
+clap_derive = { version = "4.5.18" }

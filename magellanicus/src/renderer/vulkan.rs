@@ -48,10 +48,6 @@ impl VulkanRenderer {
         let descriptor_set_allocator =
             StandardDescriptorSetAllocator::new(device.clone(), Default::default());
 
-        let solid_color_shader = solid_color::SolidColorShader::new(device.clone())?;
-
-        unsafe { exit(134); }
-
         Ok(Self {
             current_resolution: renderer_parameters.resolution,
             instance,
@@ -83,7 +79,6 @@ impl<T: Display> From<vulkano::Validated<T>> for Error {
 
 impl From<alloc::boxed::Box<ValidationError>> for Error {
     fn from(value: alloc::boxed::Box<ValidationError>) -> Self {
-        // Self::from_vulkan_error(format!("Validation error! {value:?}"))
         panic!("Validation error! {value:?}\n\n-----------\n\nBACKTRACE:\n\n{}\n\n-----------\n\n", std::backtrace::Backtrace::force_capture())
     }
 }
