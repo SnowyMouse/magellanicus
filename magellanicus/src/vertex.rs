@@ -13,3 +13,9 @@ pub struct ModelVertex {
 pub struct LightmapVertex {
     pub lightmap_texture_coords: [f32; 2]
 }
+
+#[derive(Copy, Clone, Debug)]
+#[repr(C)]
+pub struct ModelTriangle {
+    pub indices: [u16; 3]
+}

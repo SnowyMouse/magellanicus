@@ -1,6 +1,6 @@
 use std::iter::empty;
 use std::sync::Arc;
-use crate::vertex::{LightmapVertex, ModelVertex};
+use crate::vertex::{LightmapVertex, ModelVertex, ModelTriangle};
 use std::vec::Vec;
 use crate::error::{Error, MResult};
 use crate::renderer::vulkan::vertex::*;
@@ -29,7 +29,7 @@ impl VulkanMaterialVertexBuffers {
     pub fn new(
         vertices: impl IntoIterator<Item = ModelVertex>,
         lightmap_vertices: impl IntoIterator<Item = LightmapVertex>,
-        indices: impl IntoIterator<Item = u16>
+        indices: impl IntoIterator<Item = ModelTriangle>
     ) -> MResult<Arc<VulkanMaterialVertexBuffers>> {
         Self::new_from_iters(
             vertices.into_iter(),
@@ -41,7 +41,7 @@ impl VulkanMaterialVertexBuffers {
     fn new_from_iters(
         vertices: impl Iterator<Item = ModelVertex>,
         lightmap_vertices: impl Iterator<Item = LightmapVertex>,
-        indices: impl Iterator<Item = u16>
+        indices: impl Iterator<Item = ModelTriangle>
     ) -> MResult<Arc<VulkanMaterialVertexBuffers>> {
         // Prevent allocating/loading too many vertices
         const MAX_VERTEX_LIMIT: usize = u16::MAX as usize;
@@ -96,11 +96,13 @@ impl VulkanMaterialVertexBuffers {
         };
 
         let mut indices_buf = Vec::with_capacity(indices.size_hint().0);
-        for i in indices {
-            if i as usize >= vertex_count {
-                return Err(Error::DataError { error: std::format!("vertex index {i} out-of-bounds") })
+        for ModelTriangle { indices: [a, b, c] } in indices {
+            if a as usize >= vertex_count || b as usize >= vertex_count || c as usize >= vertex_count {
+                return Err(Error::DataError { error: std::format!("triangle {a},{b},{c} out-of-bounds (at least one index was >= {vertex_count})") })
             }
-            indices_buf.push(i);
+            indices_buf.push(a);
+            indices_buf.push(b);
+            indices_buf.push(c);
         }
         indices_buf.shrink_to_fit();
 

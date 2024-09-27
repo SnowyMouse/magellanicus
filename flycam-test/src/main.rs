@@ -1,4 +1,4 @@
-use magellanicus::renderer::{Renderer, RendererParameters, Resolution};
+use magellanicus::renderer::{AddBSPParameter, AddBSPParameterLightmapMaterial, AddBSPParameterLightmapSet, Renderer, RendererParameters, Resolution};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
@@ -9,12 +9,15 @@ use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::window::{Window, WindowId};
 
 use clap::Parser;
-use ringhopper::definitions::UnicodeStringList;
+use ringhopper::definitions::{Scenario, ScenarioStructureBSP, UnicodeStringList};
+use ringhopper::primitives::dynamic::DynamicTagDataArray;
 use ringhopper::primitives::engine::Engine;
-use ringhopper::primitives::primitive::TagPath;
+use ringhopper::primitives::primitive::{TagGroup, TagPath};
 use ringhopper::primitives::tag::{ParseStrictness, PrimaryTagStructDyn};
 use ringhopper::tag::dependency::recursively_get_dependencies_for_map;
+use ringhopper::tag::scenario_structure_bsp::get_uncompressed_vertices_for_bsp_material;
 use ringhopper::tag::tree::{CachingTagTree, CachingTagTreeWriteStrategy, TagTree, VirtualTagsDirectory};
+use magellanicus::vertex::{LightmapVertex, ModelTriangle, ModelVertex};
 
 #[derive(Parser)]
 struct Arguments {
@@ -33,6 +36,13 @@ struct Arguments {
     ///
     /// Ignored/not needed when loading cache files, as this is derived from the map.
     pub engine: Option<String>
+}
+
+struct ScenarioData {
+    tags: HashMap<TagPath, Box<dyn PrimaryTagStructDyn>>,
+    scenario_path: TagPath,
+    scenario_tag: Scenario,
+    engine: &'static Engine,
 }
 
 fn main() -> Result<(), String> {
@@ -63,12 +73,23 @@ fn main() -> Result<(), String> {
 
     let scenario_tag = dependencies
         .get(&scenario_path)
-        .unwrap();
+        .unwrap()
+        .get_ref::<Scenario>()
+        .expect("scenario wasn't scenario???")
+        .to_owned();
+
+    let scenario_data = ScenarioData {
+        tags: dependencies,
+        scenario_path,
+        scenario_tag,
+        engine
+    };
 
     let event_loop = EventLoop::new().unwrap();
     let mut handler = FlycamTestHandler {
         renderer: None,
-        window: None
+        window: None,
+        scenario_data
     };
     event_loop.run_app(&mut handler).unwrap();
     Ok(())
@@ -135,13 +156,15 @@ fn load_tags_from_cache(cache: &Path) -> Result<(TagPath, &'static Engine, HashM
 
 pub struct FlycamTestHandler {
     renderer: Option<Renderer>,
-    window: Option<Arc<Window>>
+    window: Option<Arc<Window>>,
+    scenario_data: ScenarioData
 }
 
 impl ApplicationHandler for FlycamTestHandler {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         let mut attributes = Window::default_attributes();
         attributes.inner_size = Some(Size::Physical(PhysicalSize::new(640, 480)));
+        attributes.title = format!("Magellanicus - {path}", path = self.scenario_data.scenario_path);
 
         let window = Arc::new(event_loop.create_window(attributes).unwrap());
         self.window = Some(window.clone());
@@ -159,6 +182,11 @@ impl ApplicationHandler for FlycamTestHandler {
                 event_loop.exit();
             }
         }
+
+        if let Err(e) = self.load_bsps() {
+            eprintln!("ERROR: {e}");
+            event_loop.exit();
+        }
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
@@ -170,4 +198,94 @@ impl ApplicationHandler for FlycamTestHandler {
             _ => ()
         }
     }
+}
+
+impl FlycamTestHandler {
+    fn load_bsps(&mut self) -> Result<(), String> {
+        let renderer = self.renderer.as_mut().unwrap();
+
+        let all_bsps = self.scenario_data
+            .tags
+            .iter()
+            .filter(|f| f.0.group() == TagGroup::ScenarioStructureBSP)
+            .map(|f| (f.0, f.1.get_ref::<ScenarioStructureBSP>().unwrap()));
+
+        for (path, bsp) in all_bsps {
+            let mut add_bsp = AddBSPParameter {
+                lightmap_bitmap: bsp.lightmaps_bitmap.path().map(|p| p.to_native_path()),
+                lightmap_sets: Vec::with_capacity(bsp.lightmaps.items.len())
+            };
+
+            for (lightmap_index, lightmap) in bsp.lightmaps.items.iter().enumerate() {
+                let mut add_lightmap = AddBSPParameterLightmapSet {
+                    lightmap_index: lightmap.bitmap.map(|i| i as usize),
+                    materials: Vec::with_capacity(lightmap.materials.len())
+                };
+
+                for (material_index, material) in lightmap.materials.items.iter().enumerate() {
+                    let Some(shader_path) = material.shader.path() else {
+                        continue
+                    };
+
+                    let surfaces: usize = material.surfaces.try_into().unwrap();
+                    let surface_count: usize = material.surface_count.try_into().unwrap();
+
+                    let surface_indices = surfaces.checked_add(surface_count)
+                        .and_then(|range_end| bsp
+                            .surfaces
+                            .items
+                            .get(surfaces..range_end)
+                        );
+                    let Some(surface_indices) = surface_indices else {
+                        return Err(format!("Material #{material_index} of Lightmap #{lightmap_index} of BSP {path} has broken surface indices."));
+                    };
+
+                    let indices = surface_indices
+                        .iter()
+                        .filter_map(|s| {
+                            let a = s.vertex0_index?;
+                            let b = s.vertex1_index?;
+                            let c = s.vertex2_index?;
+                            Some(ModelTriangle { indices: [a,b,c] })
+                    }).collect();
+
+                    let (material, lightmap) = get_uncompressed_vertices_for_bsp_material(material).map_err(|e| {
+                        format!("Material #{material_index} of Lightmap #{lightmap_index} of BSP {path} has broken vertices.")
+                    })?;
+
+                    let shader_vertices = material
+                        .map(|f| ModelVertex {
+                            position: [f.position.x as f32, f.position.y as f32, f.position.z as f32],
+                            normal: [f.normal.x as f32, f.normal.y as f32, f.normal.z as f32],
+                            binormal: [f.binormal.x as f32, f.binormal.y as f32, f.binormal.z as f32],
+                            tangent: [f.tangent.x as f32, f.tangent.y as f32, f.tangent.z as f32],
+                            texture_coords: [f.texture_coords.x as f32, f.texture_coords.y as f32]
+                        })
+                        .collect();
+
+                    let lightmap = lightmap
+                        .map(|f| LightmapVertex {
+                            lightmap_texture_coords: [f.texture_coords.x as f32, f.texture_coords.y as f32]
+                        })
+                        .collect();
+
+                    add_lightmap.materials.push(AddBSPParameterLightmapMaterial {
+                        shader_vertices,
+                        lightmap_vertices: Some(lightmap),
+                        indices,
+                        shader: shader_path.to_native_path()
+                    });
+                }
+                add_bsp.lightmap_sets.push(add_lightmap);
+            }
+
+            renderer.add_bsp(&path.to_native_path(), add_bsp)?;
+        }
+
+        Ok(())
+    }
+}
+
+fn load_bsp_tag_into_renderer(renderer: &mut Renderer, bsp_tag: &ScenarioStructureBSP) {
+
 }

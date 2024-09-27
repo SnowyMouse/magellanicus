@@ -2,6 +2,7 @@ use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
 use alloc::string::String;
 use alloc::vec::Vec;
+use alloc::format;
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use data::*;
 
@@ -22,7 +23,9 @@ pub struct Renderer {
     shaders: BTreeMap<Arc<String>, Shader>,
     geometries: BTreeMap<Arc<String>, Geometry>,
     skies: BTreeMap<Arc<String>, Sky>,
-    bsps: BTreeMap<Arc<String>, BSP>
+    bsps: BTreeMap<Arc<String>, BSP>,
+
+    current_bsp: Option<Arc<String>>
 }
 
 impl Renderer {
@@ -49,7 +52,8 @@ impl Renderer {
             shaders: BTreeMap::new(),
             geometries: BTreeMap::new(),
             skies: BTreeMap::new(),
-            bsps: BTreeMap::new()
+            bsps: BTreeMap::new(),
+            current_bsp: None
         })
     }
 
@@ -62,6 +66,7 @@ impl Renderer {
         self.geometries.clear();
         self.skies.clear();
         self.bsps.clear();
+        self.current_bsp = None;
     }
 
     /// Add a bitmap with the given parameters.
@@ -106,12 +111,38 @@ impl Renderer {
         todo!()
     }
 
-    /// Set the current BSP.
+    /// Add a BSP.
     ///
     /// This will error if:
     /// - `bsp` is invalid
     /// - `bsp` contains invalid dependencies
-    pub fn set_bsp(&mut self, path: &str, bsp: SetBSPParameter) -> Result<(), String> {
+    pub fn add_bsp(&mut self, path: &str, bsp: AddBSPParameter) -> Result<(), String> {
         todo!()
+    }
+
+    /// Set the current BSP.
+    ///
+    /// If `path` is `None`, the BSP will be unloaded.
+    ///
+    /// Returns `Err` if `path` refers to a BSP that isn't loaded.
+    pub fn set_current_bsp(&mut self, path: Option<&str>) -> Result<(), String> {
+        if let Some(p) = path {
+            let key = self
+                .bsps
+                .keys()
+                .find(|f| f.as_str() == p)
+                .map(|b| b.clone());
+
+            if key.is_none() {
+                return Err(format!("Can't set current BSP to {path}: that BSP is not loaded"))
+            }
+
+            self.current_bsp = key;
+        }
+        else {
+            self.current_bsp = None;
+        }
+
+        Ok(())
     }
 }
