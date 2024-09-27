@@ -250,7 +250,7 @@ impl FlycamTestHandler {
                     }).collect();
 
                     let (material, lightmap) = get_uncompressed_vertices_for_bsp_material(material).map_err(|e| {
-                        format!("Material #{material_index} of Lightmap #{lightmap_index} of BSP {path} has broken vertices.")
+                        format!("Material #{material_index} of Lightmap #{lightmap_index} of BSP {path} has broken vertices: {e:?}")
                     })?;
 
                     let shader_vertices = material
@@ -284,8 +284,4 @@ impl FlycamTestHandler {
 
         Ok(())
     }
-}
-
-fn load_bsp_tag_into_renderer(renderer: &mut Renderer, bsp_tag: &ScenarioStructureBSP) {
-
 }

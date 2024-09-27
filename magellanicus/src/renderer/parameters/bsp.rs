@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 use alloc::string::String;
 use alloc::format;
-use crate::renderer::data::Bitmap;
+use crate::renderer::data::{Bitmap, Shader, ShaderType};
 use crate::renderer::Renderer;
 use crate::vertex::{LightmapVertex, ModelTriangle, ModelVertex};
 
@@ -76,9 +76,19 @@ impl AddBSPParameter {
                         return Err(format!("BSP material #{material_index} of lightmap #{lightmap_index} has lightmap vertices when no lightmap bitmap is set"))
                     }
                 }
+
+                let shader_path = &material.shader;
+                let Some(Shader { shader_type, .. }) = renderer.shaders.get(shader_path) else {
+                    return Err(format!("BSP material #{material_index} of lightmap #{lightmap_index} references shader {shader_path} which is not loaded"))
+                };
+
+                // No reason we can't actually render this on a BSP, but these tags are intended to
+                // only be rendered on objects.
+                if *shader_type == ShaderType::Model {
+                    return Err(format!("BSP material #{material_index} of lightmap #{lightmap_index} references shader {shader_path}, a {shader_type:?} type which isn't allowed for BSPs"))
+                }
             }
         }
-
         Ok(())
     }
 }

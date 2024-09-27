@@ -38,7 +38,7 @@ impl Renderer {
     /// - the renderer backend could not be initialized for some reason
     pub fn new(parameters: RendererParameters, surface: Arc<impl HasRawWindowHandle + HasRawDisplayHandle + Send + Sync + 'static>) -> Result<Self, String> {
         if !(1..=4).contains(&parameters.number_of_viewports) {
-            return Err(alloc::format!("number of viewports was set to {}, but only 1-4 are supported", parameters.number_of_viewports))
+            return Err(format!("number of viewports was set to {}, but only 1-4 are supported", parameters.number_of_viewports))
         }
 
         let player_viewports = Vec::with_capacity(parameters.number_of_viewports);
@@ -134,7 +134,7 @@ impl Renderer {
                 .map(|b| b.clone());
 
             if key.is_none() {
-                return Err(format!("Can't set current BSP to {path}: that BSP is not loaded"))
+                return Err(format!("Can't set current BSP to {path:?}: that BSP is not loaded"))
             }
 
             self.current_bsp = key;
