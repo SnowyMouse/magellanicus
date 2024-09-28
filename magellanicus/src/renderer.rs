@@ -3,12 +3,14 @@ use alloc::sync::Arc;
 use alloc::string::String;
 use alloc::vec::Vec;
 use alloc::format;
+use alloc::borrow::ToOwned;
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use data::*;
 
 pub use parameters::*;
 use crate::renderer::vulkan::VulkanRenderer;
 use player_viewport::*;
+use crate::error::{Error, MResult};
 
 mod parameters;
 mod vulkan;
@@ -36,9 +38,9 @@ impl Renderer {
     /// Errors if:
     /// - `parameters` is invalid
     /// - the renderer backend could not be initialized for some reason
-    pub fn new(parameters: RendererParameters, surface: Arc<impl HasRawWindowHandle + HasRawDisplayHandle + Send + Sync + 'static>) -> Result<Self, String> {
+    pub fn new(parameters: RendererParameters, surface: Arc<impl HasRawWindowHandle + HasRawDisplayHandle + Send + Sync + 'static>) -> MResult<Self> {
         if !(1..=4).contains(&parameters.number_of_viewports) {
-            return Err(format!("number of viewports was set to {}, but only 1-4 are supported", parameters.number_of_viewports))
+            return Err(Error::DataError { error: format!("number of viewports was set to {}, but only 1-4 are supported", parameters.number_of_viewports) })
         }
 
         let player_viewports = Vec::with_capacity(parameters.number_of_viewports);
@@ -46,7 +48,7 @@ impl Renderer {
         // TODO: add player viewports
 
         Ok(Self {
-            renderer: VulkanRenderer::new(&parameters, surface.clone()).map_err(|e| alloc::format!("Vulkan init fail: {e}"))?,
+            renderer: VulkanRenderer::new(&parameters, surface.clone())?,
             player_viewports,
             bitmaps: BTreeMap::new(),
             shaders: BTreeMap::new(),
@@ -76,8 +78,12 @@ impl Renderer {
     /// This will error if:
     /// - `bitmap` is invalid
     /// - replacing a bitmap would break any dependencies (HUDs, shaders, etc.)
-    pub fn add_bitmap(&mut self, path: &str, bitmap: AddBitmapParameter) -> Result<(), String> {
-        todo!()
+    pub fn add_bitmap(&mut self, path: &str, bitmap: AddBitmapParameter) -> MResult<()> {
+        bitmap.validate()?;
+
+        let bitmap = Bitmap::load_from_parameters(self, bitmap)?;
+        self.bitmaps.insert(Arc::new(path.to_owned()), bitmap);
+        Ok(())
     }
 
     /// Add a shader.
@@ -88,8 +94,12 @@ impl Renderer {
     /// - `shader` is invalid
     /// - `shader` contains invalid dependencies
     /// - replacing a shader would break any dependencies
-    pub fn add_shader(&mut self, path: &str, shader: AddShaderParameter) -> Result<(), String> {
-        todo!()
+    pub fn add_shader(&mut self, path: &str, shader: AddShaderParameter) -> MResult<()> {
+        shader.validate(self)?;
+
+        let shader = Shader::load_from_parameters(self, shader)?;
+        self.shaders.insert(Arc::new(path.to_owned()), shader);
+        Ok(())
     }
 
     /// Add a geometry.

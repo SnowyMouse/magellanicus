@@ -1,4 +1,4 @@
-use magellanicus::renderer::{AddBSPParameter, AddBSPParameterLightmapMaterial, AddBSPParameterLightmapSet, Renderer, RendererParameters, Resolution};
+use magellanicus::renderer::{AddBSPParameter, AddBSPParameterLightmapMaterial, AddBSPParameterLightmapSet, AddBitmapBitmapParameter, AddBitmapParameter, AddBitmapSequenceParameter, AddShaderBasicShaderData, AddShaderData, AddShaderParameter, BitmapFormat, BitmapSprite, BitmapType, Renderer, RendererParameters, Resolution, ShaderType};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
@@ -9,15 +9,16 @@ use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::window::{Window, WindowId};
 
 use clap::Parser;
-use ringhopper::definitions::{Scenario, ScenarioStructureBSP, UnicodeStringList};
+use magellanicus::vertex::{LightmapVertex, ModelTriangle, ModelVertex};
+use ringhopper::definitions::{Bitmap, BitmapDataFormat, Scenario, ScenarioStructureBSP, ShaderEnvironment, ShaderModel, ShaderTransparentChicago, ShaderTransparentChicagoExtended, ShaderTransparentGeneric, ShaderTransparentGlass, ShaderTransparentMeter, UnicodeStringList};
 use ringhopper::primitives::dynamic::DynamicTagDataArray;
 use ringhopper::primitives::engine::Engine;
 use ringhopper::primitives::primitive::{TagGroup, TagPath};
 use ringhopper::primitives::tag::{ParseStrictness, PrimaryTagStructDyn};
+use ringhopper::tag::bitmap::MipmapTextureIterator;
 use ringhopper::tag::dependency::recursively_get_dependencies_for_map;
 use ringhopper::tag::scenario_structure_bsp::get_uncompressed_vertices_for_bsp_material;
 use ringhopper::tag::tree::{CachingTagTree, CachingTagTreeWriteStrategy, TagTree, VirtualTagsDirectory};
-use magellanicus::vertex::{LightmapVertex, ModelTriangle, ModelVertex};
 
 #[derive(Parser)]
 struct Arguments {
@@ -183,10 +184,20 @@ impl ApplicationHandler for FlycamTestHandler {
             }
         }
 
-        if let Err(e) = self.load_bsps() {
-            eprintln!("ERROR: {e}");
-            event_loop.exit();
+        if let Err(e) = self.load_bitmaps() {
+            eprintln!("ERROR LOADING BITMAPS: {e}");
+            return event_loop.exit();
         }
+
+        // if let Err(e) = self.load_shaders() {
+        //     eprintln!("ERROR LOADING shaders: {e}");
+        //     return event_loop.exit();
+        // }
+
+        // if let Err(e) = self.load_bsps() {
+        //     eprintln!("ERROR: {e}");
+        //     event_loop.exit();
+        // }
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
@@ -201,6 +212,234 @@ impl ApplicationHandler for FlycamTestHandler {
 }
 
 impl FlycamTestHandler {
+    fn load_bitmaps(&mut self) -> Result<(), String> {
+        let renderer = self.renderer.as_mut().unwrap();
+        let all_bitmaps = self.scenario_data
+            .tags
+            .iter()
+            .filter(|f| f.0.group() == TagGroup::Bitmap)
+            .map(|f| (f.0, f.1.get_ref::<Bitmap>().unwrap()));
+        
+        for (path, bitmap) in all_bitmaps {
+            Self::load_bitmap(renderer, &path, bitmap).map_err(|e| format!("Failed to load bitmap {path}: {e}"))?;
+        }
+
+        Ok(())
+    }
+
+    fn load_bitmap(renderer: &mut Renderer, path: &&TagPath, bitmap: &Bitmap) -> Result<(), String> {
+        let parameter = AddBitmapParameter {
+            bitmaps: {
+                let mut bitmaps = Vec::with_capacity(bitmap.bitmap_data.items.len());
+                for (bitmap_index, b) in bitmap.bitmap_data.items.iter().enumerate() {
+                    let format = match b.format {
+                        BitmapDataFormat::A8 => BitmapFormat::A8,
+                        BitmapDataFormat::Y8 => BitmapFormat::Y8,
+                        BitmapDataFormat::AY8 => BitmapFormat::AY8,
+                        BitmapDataFormat::A8Y8 => BitmapFormat::A8Y8,
+                        BitmapDataFormat::R5G6B5 => BitmapFormat::R5G6B5,
+                        BitmapDataFormat::A1R5G5B5 => BitmapFormat::A1R5G5B5,
+                        BitmapDataFormat::A4R4G4B4 => BitmapFormat::A4R4G4B4,
+                        BitmapDataFormat::X8R8G8B8 => BitmapFormat::X8R8G8B8,
+                        BitmapDataFormat::A8R8G8B8 => BitmapFormat::A8R8G8B8,
+                        BitmapDataFormat::DXT1 => BitmapFormat::DXT1,
+                        BitmapDataFormat::DXT3 => BitmapFormat::DXT3,
+                        BitmapDataFormat::DXT5 => BitmapFormat::DXT5,
+                        BitmapDataFormat::P8 => BitmapFormat::P8,
+                        BitmapDataFormat::BC7 => BitmapFormat::BC7,
+                    };
+                    let parameter = AddBitmapBitmapParameter {
+                        format,
+                        bitmap_type: match bitmap._type {
+                            ringhopper::definitions::BitmapType::CubeMaps => BitmapType::Cubemap,
+                            ringhopper::definitions::BitmapType::_3dTextures => BitmapType::Dim3D { depth: b.depth as u32 },
+                            _ => BitmapType::Dim2D
+                        },
+                        resolution: Resolution { width: b.width as u32, height: b.height as u32 },
+                        mipmap_count: b.mipmap_count as u32,
+                        data: {
+                            let length = MipmapTextureIterator::new_from_bitmap_data(b)
+                                .map_err(|e| format!("Error with reading bitmap data #{bitmap_index} from {path}: {e:?}"))?
+                                .map(|b| b.block_count)
+                                .reduce(|a, b| a + b)
+                                .unwrap() * format.block_byte_size();
+                            let start = b.pixel_data_offset as usize;
+                            let data: &[u8] = start.checked_add(length)
+                                .and_then(|end| bitmap.processed_pixel_data.bytes.get(start..end))
+                                .ok_or_else(|| format!("Can't read {length} bytes from {start} in a buffer of {} bytes for bitmap data #{bitmap_index} in {path}", bitmap.processed_pixel_data.bytes.len()))?;
+                            data.to_vec()
+                        }
+                    };
+                    bitmaps.push(parameter);
+                }
+                bitmaps
+            },
+            sequences: {
+                let mut sequences = Vec::with_capacity(bitmap.bitmap_group_sequence.items.len());
+                for (sequence_index, s) in bitmap.bitmap_group_sequence.items.iter().enumerate() {
+                    let result = if bitmap._type == ringhopper::definitions::BitmapType::Sprites {
+                        AddBitmapSequenceParameter::Sprites {
+                            sprites: {
+                                let mut sprites = Vec::with_capacity(s.sprites.items.len());
+                                for (sprite_index, s) in s.sprites.items.iter().enumerate() {
+                                    let sprite = BitmapSprite {
+                                        bitmap: s.bitmap_index.map(|o| o as usize).ok_or_else(|| format!("Sprite {sprite_index} of sequence {sequence_index} of bitmap {path} has a null bitmap index"))?,
+                                        top: s.top as f32,
+                                        left: s.left as f32,
+                                        bottom: s.bottom as f32,
+                                        right: s.right as f32
+                                    };
+                                    sprites.push(sprite);
+                                }
+                                sprites
+                            }
+                        }
+                    } else {
+                        AddBitmapSequenceParameter::Bitmap {
+                            first: s.first_bitmap_index.map(|o| o as usize).ok_or_else(|| format!("Sequence {sequence_index} of bitmap {path} has a null bitmap index"))?,
+                            count: s.bitmap_count as usize
+                        }
+                    };
+                    sequences.push(result);
+                }
+                sequences
+            }
+        };
+
+        renderer.add_bitmap(&path.to_string(), parameter).map_err(|e| e.to_string())
+    }
+
+    fn load_shaders(&mut self) -> Result<(), String> {
+        let renderer = self.renderer.as_mut().unwrap();
+
+        let all_shaders = self.scenario_data
+            .tags
+            .iter()
+            .filter(|f| f.0.group().subgroup() == Some(TagGroup::Shader));
+
+        for (path, tag) in all_shaders {
+            Self::load_shader(renderer, &path, tag).map_err(|e| format!("Failed to load shader {path}: {e}"))?;
+        }
+
+        todo!()
+    }
+
+    fn load_shader(renderer: &mut Renderer, path: &&TagPath, tag: &Box<dyn PrimaryTagStructDyn>) -> Result<(), String> {
+        let new_shader = match tag.group() {
+            TagGroup::ShaderEnvironment => {
+                let tag = tag.get_ref::<ShaderEnvironment>().unwrap();
+                AddShaderParameter {
+                    data: AddShaderData::BasicShader(AddShaderBasicShaderData {
+                        bitmap: tag.diffuse.base_map.path().ok_or_else(|| format!("{path} has no base map"))?.to_string(),
+                        shader_type: ShaderType::Environment
+                    })
+                }
+            },
+            TagGroup::ShaderModel => {
+                let tag = tag.get_ref::<ShaderModel>().unwrap();
+                AddShaderParameter {
+                    data: AddShaderData::BasicShader(AddShaderBasicShaderData {
+                        bitmap: tag.maps.base_map.path().ok_or_else(|| format!("{path} has no base map"))?.to_string(),
+                        shader_type: ShaderType::Model
+                    })
+                }
+            },
+            TagGroup::ShaderTransparentChicago => {
+                let tag = tag.get_ref::<ShaderTransparentChicago>().unwrap();
+                AddShaderParameter {
+                    data: AddShaderData::BasicShader(AddShaderBasicShaderData {
+                        bitmap: tag
+                            .maps
+                            .items
+                            .get(0)
+                            .and_then(|b| b.parameters.map.path())
+                            .map(|b| b.to_string())
+                            .unwrap_or_else(|| TagPath::from_path("ui\\shell\\bitmaps\\white.bitmap").unwrap().to_string()),
+                        shader_type: ShaderType::TransparentChicago
+                    })
+                }
+            },
+            TagGroup::ShaderTransparentChicagoExtended => {
+                let tag = tag.get_ref::<ShaderTransparentChicagoExtended>().unwrap();
+                AddShaderParameter {
+                    data: AddShaderData::BasicShader(AddShaderBasicShaderData {
+                        bitmap: tag
+                            ._4_stage_maps
+                            .items
+                            .get(0)
+                            .and_then(|b| b.parameters.map.path())
+                            .map(|b| b.to_string())
+                            .unwrap_or_else(|| TagPath::from_path("ui\\shell\\bitmaps\\white.bitmap").unwrap().to_string()),
+                        shader_type: ShaderType::TransparentChicago
+                    })
+                }
+            },
+            TagGroup::ShaderTransparentGeneric => {
+                let tag = tag.get_ref::<ShaderTransparentGeneric>().unwrap();
+                AddShaderParameter {
+                    data: AddShaderData::BasicShader(AddShaderBasicShaderData {
+                        bitmap: tag
+                            .maps
+                            .items
+                            .get(0)
+                            .and_then(|b| b.parameters.map.path())
+                            .map(|b| b.to_string())
+                            .unwrap_or_else(|| TagPath::from_path("ui\\shell\\bitmaps\\white.bitmap").unwrap().to_string()),
+                        shader_type: ShaderType::TransparentGeneric
+                    })
+                }
+            },
+            TagGroup::ShaderTransparentGlass => {
+                let tag = tag.get_ref::<ShaderTransparentGlass>().unwrap();
+                AddShaderParameter {
+                    data: AddShaderData::BasicShader(AddShaderBasicShaderData {
+                        bitmap: tag
+                            .diffuse
+                            .diffuse_map
+                            .path()
+                            .map(|b| b.to_string())
+                            .unwrap_or_else(|| TagPath::from_path("ui\\shell\\bitmaps\\white.bitmap").unwrap().to_string()),
+                        shader_type: ShaderType::TransparentGlass
+                    })
+                }
+            },
+            TagGroup::ShaderTransparentMeter => {
+                let tag = tag.get_ref::<ShaderTransparentMeter>().unwrap();
+                AddShaderParameter {
+                    data: AddShaderData::BasicShader(AddShaderBasicShaderData {
+                        bitmap: tag
+                            .properties
+                            .map
+                            .path()
+                            .map(|b| b.to_string())
+                            .unwrap_or_else(|| TagPath::from_path("ui\\shell\\bitmaps\\white.bitmap").unwrap().to_string()),
+                        shader_type: ShaderType::TransparentMeter
+                    })
+                }
+            },
+            TagGroup::ShaderTransparentPlasma => {
+                // let tag = tag.get_ref::<ShaderTransparentPlasma>().unwrap();
+                AddShaderParameter {
+                    data: AddShaderData::BasicShader(AddShaderBasicShaderData {
+                        bitmap: TagPath::from_path("ui\\shell\\bitmaps\\white.bitmap").unwrap().to_string(),
+                        shader_type: ShaderType::TransparentPlasma
+                    })
+                }
+            },
+            TagGroup::ShaderTransparentWater => {
+                // let tag = tag.get_ref::<ShaderTransparentWater>().unwrap();
+                AddShaderParameter {
+                    data: AddShaderData::BasicShader(AddShaderBasicShaderData {
+                        bitmap: TagPath::from_path("ui\\shell\\bitmaps\\white.bitmap").unwrap().to_string(),
+                        shader_type: ShaderType::TransparentWater
+                    })
+                }
+            },
+            n => unreachable!("{n}")
+        };
+        renderer.add_shader(&path.to_string(), new_shader).map_err(|e| e.to_string())
+    }
+
     fn load_bsps(&mut self) -> Result<(), String> {
         let renderer = self.renderer.as_mut().unwrap();
 

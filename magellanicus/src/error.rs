@@ -6,7 +6,7 @@ use core::fmt::Formatter;
 pub type MResult<T> = Result<T, Error>;
 
 /// General Error type
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Error {
     GraphicsAPIError { backend: &'static str, error: String },
     DataError { error: String }

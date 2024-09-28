@@ -18,6 +18,7 @@ pub fn load_vulkan_and_get_queue(surface: Arc<impl HasRawWindowHandle + HasRawDi
 
     let device_extensions_12 = DeviceExtensions {
         khr_dynamic_rendering: true,
+        ext_4444_formats: true,
         ..device_extensions_13
     }.clone();
 

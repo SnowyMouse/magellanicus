@@ -17,7 +17,7 @@ use vulkano::pipeline::layout::PipelineDescriptorSetLayoutCreateInfo;
 use crate::error::MResult;
 use crate::renderer::vulkan::vertex::*;
 
-#[derive(Default)]
+#[derive(Copy, Clone, Default)]
 pub struct PipelineSettings {
     pub vertex_inputs: &'static [VertexPipelineInput],
     pub writes_depth: bool

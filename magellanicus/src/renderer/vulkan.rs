@@ -9,14 +9,15 @@ mod helper;
 mod player_viewport;
 mod vertex;
 
-use alloc::sync::Arc;
-use alloc::format;
-use core::fmt::{Debug, Display};
+use std::sync::Arc;
+use std::format;
+use std::fmt::{Debug, Display};
 use std::println;
+use std::boxed::Box;
 use raw_window_handle::{HasDisplayHandle, HasRawDisplayHandle, HasRawWindowHandle};
 use vulkano::command_buffer::allocator::{CommandBufferAllocator, StandardCommandBufferAllocator};
 use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
-use vulkano::device::DeviceExtensions;
+use vulkano::device::{Device, DeviceExtensions, Queue};
 use vulkano::instance::{Instance, InstanceCreateInfo, InstanceExtensions};
 use vulkano::memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator};
 use vulkano::swapchain::Surface;
@@ -35,8 +36,12 @@ use crate::renderer::Resolution;
 pub struct VulkanRenderer {
     current_resolution: Resolution,
     instance: Arc<Instance>,
+    device: Arc<Device>,
+    memory_allocator: Arc<StandardMemoryAllocator>,
     command_buffer_allocator: StandardCommandBufferAllocator,
     descriptor_set_allocator: StandardDescriptorSetAllocator,
+    queue: Arc<Queue>,
+    future: Option<Box<dyn GpuFuture>>
 }
 
 impl VulkanRenderer {
@@ -48,12 +53,29 @@ impl VulkanRenderer {
         let descriptor_set_allocator =
             StandardDescriptorSetAllocator::new(device.clone(), Default::default());
 
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+        let future = Some(vulkano::sync::now(device.clone()).boxed());
+
         Ok(Self {
             current_resolution: renderer_parameters.resolution,
             instance,
             command_buffer_allocator,
-            descriptor_set_allocator
+            descriptor_set_allocator,
+            memory_allocator,
+            device,
+            queue,
+            future
         })
+    }
+
+    fn execute_command_list(&mut self, command_buffer: Arc<impl PrimaryCommandBufferAbstract + 'static>) {
+        let future = self.future
+            .take()
+            .expect("no future?")
+            .then_execute(self.queue.clone(), command_buffer)
+            .expect("failed to execute the command list")
+            .boxed();
+        self.future = Some(future)
     }
 }
 
@@ -77,8 +99,8 @@ impl<T: Display> From<vulkano::Validated<T>> for Error {
     }
 }
 
-impl From<alloc::boxed::Box<ValidationError>> for Error {
-    fn from(value: alloc::boxed::Box<ValidationError>) -> Self {
+impl From<Box<ValidationError>> for Error {
+    fn from(value: Box<ValidationError>) -> Self {
         panic!("Validation error! {value:?}\n\n-----------\n\nBACKTRACE:\n\n{}\n\n-----------\n\n", std::backtrace::Backtrace::force_capture())
     }
 }
