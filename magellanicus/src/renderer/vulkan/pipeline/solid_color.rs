@@ -15,20 +15,21 @@ use vulkano::pipeline::graphics::vertex_input::{Vertex, VertexDefinition};
 use vulkano::pipeline::graphics::viewport::ViewportState;
 use vulkano::pipeline::layout::PipelineDescriptorSetLayoutCreateInfo;
 use crate::error::MResult;
-use crate::renderer::vulkan::shader::pipeline_loader::{load_pipeline, PipelineSettings, VertexPipelineInput};
-use crate::renderer::vulkan::vertex::{VulkanModelVertexNormal, VulkanModelVertexPosition, VulkanModelVertexTextureCoords};
+use crate::renderer::vulkan::pipeline::pipeline_loader::{load_pipeline, DepthAccess, PipelineSettings};
+use crate::renderer::vulkan::vertex::{VulkanModelVertex, VulkanModelVertexTextureCoords};
+use crate::renderer::vulkan::VulkanPipelineData;
 
 mod vertex {
     vulkano_shaders::shader! {
         ty: "vertex",
-        path: "src/renderer/vulkan/shader/solid_color/vertex.vert"
+        path: "src/renderer/vulkan/pipeline/solid_color/vertex.vert"
     }
 }
 
 mod fragment {
     vulkano_shaders::shader! {
         ty: "fragment",
-        path: "src/renderer/vulkan/shader/solid_color/fragment.frag"
+        path: "src/renderer/vulkan/pipeline/solid_color/fragment.frag"
     }
 }
 
@@ -39,12 +40,17 @@ pub struct SolidColorShader {
 impl SolidColorShader {
     pub fn new(device: Arc<Device>) -> MResult<Self> {
         let pipeline = load_pipeline(device, vertex::load, fragment::load, &PipelineSettings {
-            vertex_inputs: &[
-                VertexPipelineInput::Position,
-            ],
-            writes_depth: true
+            depth_access: DepthAccess::DepthWrite,
+            vertex_buffer_descriptions: vec![VulkanModelVertex::per_vertex()],
+            backface_culling: false
         })?;
 
         Ok(Self { pipeline })
+    }
+}
+
+impl VulkanPipelineData for SolidColorShader {
+    fn get_pipeline(&self) -> Arc<GraphicsPipeline> {
+        self.pipeline.clone()
     }
 }

@@ -10,12 +10,9 @@ pub struct VulkanMaterialData {
 }
 
 pub struct VulkanMaterialVertexBuffers {
-    pub positions: Vec<VulkanModelVertexPosition>,
-    pub normals: Vec<VulkanModelVertexNormal>,
-    pub binormals: Vec<VulkanModelVertexBinormal>,
-    pub tangents: Vec<VulkanModelVertexTangent>,
+    pub vertices: Vec<VulkanModelVertex>,
     pub texture_coords: Vec<VulkanModelVertexTextureCoords>,
-    pub lightmap_coords: Option<Vec<VulkanModelVertexLightmapTextureCoords>>,
+    pub lightmap_coords: Option<Vec<VulkanModelVertexTextureCoords>>,
     pub indices: Vec<u16>
 }
 
@@ -52,28 +49,24 @@ impl VulkanMaterialVertexBuffers {
             return Err(Error::DataError { error: std::format!("Vertex iterator will exceed the vertex limit ({size_hint} > 65535)") })
         }
 
-        let mut positions_buf: Vec<VulkanModelVertexPosition> = Vec::with_capacity(size_hint);
-        let mut normals_buf: Vec<VulkanModelVertexNormal> = Vec::with_capacity(size_hint);
-        let mut binormals_buf: Vec<VulkanModelVertexBinormal> = Vec::with_capacity(size_hint);
-        let mut tangents_buf: Vec<VulkanModelVertexTangent> = Vec::with_capacity(size_hint);
+        let mut vertices_buf: Vec<VulkanModelVertex> = Vec::with_capacity(size_hint);
         let mut texture_coords_buf: Vec<VulkanModelVertexTextureCoords> = Vec::with_capacity(size_hint);
 
         // Don't take more than MAX_VERTEX_ALLOC_LIMIT in case size_hint vastly underestimated the actual vertex count
         for ModelVertex { position, normal, binormal, tangent, texture_coords } in vertices.take(MAX_VERTEX_ALLOC_LIMIT) {
-            positions_buf.push(VulkanModelVertexPosition { position });
-            normals_buf.push(VulkanModelVertexNormal { normal });
-            binormals_buf.push(VulkanModelVertexBinormal { binormal });
-            tangents_buf.push(VulkanModelVertexTangent { tangent });
+            vertices_buf.push(VulkanModelVertex {
+                position,
+                normal,
+                binormal,
+                tangent
+            });
             texture_coords_buf.push(VulkanModelVertexTextureCoords { texture_coords });
         }
 
-        positions_buf.shrink_to_fit();
-        normals_buf.shrink_to_fit();
-        binormals_buf.shrink_to_fit();
-        tangents_buf.shrink_to_fit();
+        vertices_buf.shrink_to_fit();
         texture_coords_buf.shrink_to_fit();
 
-        let vertex_count = positions_buf.len();
+        let vertex_count = vertices_buf.len();
 
         if vertex_count > (u16::MAX as usize) {
             return Err(Error::DataError { error: std::format!("Vertex iterator exceeded the vertex limit ({vertex_count} > 65535)") })
@@ -81,9 +74,9 @@ impl VulkanMaterialVertexBuffers {
 
         let mut lightmap_vertices = lightmap_vertices.peekable();
         let mut lightmap_coords_buf = if lightmap_vertices.peek().is_some() {
-            let mut lightmap_coords = Vec::<VulkanModelVertexLightmapTextureCoords>::with_capacity(vertex_count + 1);
+            let mut lightmap_coords = Vec::<VulkanModelVertexTextureCoords>::with_capacity(vertex_count + 1);
             for i in lightmap_vertices.take(vertex_count + 1) {
-                lightmap_coords.push(VulkanModelVertexLightmapTextureCoords { lightmap_texture_coords: i.lightmap_texture_coords })
+                lightmap_coords.push(VulkanModelVertexTextureCoords { texture_coords: i.lightmap_texture_coords })
             }
             if lightmap_coords.len() != vertex_count {
                 return Err(Error::DataError { error: std::format!("Lightmap vertex coordinates count ({}) != vertices count ({vertex_count})", lightmap_coords.len()) })
@@ -107,20 +100,14 @@ impl VulkanMaterialVertexBuffers {
         indices_buf.shrink_to_fit();
 
         let buffers = VulkanMaterialVertexBuffers {
-            positions: positions_buf,
-            normals: normals_buf,
-            binormals: binormals_buf,
-            tangents: tangents_buf,
+            vertices: vertices_buf,
             texture_coords: texture_coords_buf,
             lightmap_coords: lightmap_coords_buf,
             indices: indices_buf
         };
 
-        debug_assert_eq!(buffers.positions.len(), buffers.normals.len());
-        debug_assert_eq!(buffers.positions.len(), buffers.binormals.len());
-        debug_assert_eq!(buffers.positions.len(), buffers.tangents.len());
-        debug_assert_eq!(buffers.positions.len(), buffers.texture_coords.len());
-        debug_assert!(buffers.lightmap_coords.is_none() || buffers.lightmap_coords.as_ref().is_some_and(|l| l.len() == buffers.positions.len()));
+        debug_assert_eq!(buffers.vertices.len(), buffers.texture_coords.len());
+        debug_assert!(buffers.lightmap_coords.is_none() || buffers.lightmap_coords.as_ref().is_some_and(|l| l.len() == buffers.vertices.len()));
 
         Ok(Arc::new(buffers))
     }

@@ -1,6 +1,7 @@
 use alloc::vec::Vec;
 use alloc::string::String;
 use alloc::format;
+use crate::error::{Error, MResult};
 use crate::renderer::data::{Bitmap, Shader, ShaderType};
 use crate::renderer::Renderer;
 use crate::vertex::{LightmapVertex, ModelTriangle, ModelVertex};
@@ -28,7 +29,7 @@ pub struct AddBSPParameterLightmapSet {
 }
 
 pub struct AddBSPParameterLightmapMaterial {
-    /// Describes shader vertices.
+    /// Describes pipeline vertices.
     pub shader_vertices: Vec<ModelVertex>,
 
     /// Describes lightmap vertices.
@@ -39,15 +40,15 @@ pub struct AddBSPParameterLightmapMaterial {
     /// Describes each triangle.
     pub indices: Vec<ModelTriangle>,
 
-    /// Describes the shader used for material.
+    /// Describes the pipeline used for material.
     pub shader: String
 }
 
 impl AddBSPParameter {
-    pub(crate) fn validate(&self, renderer: &Renderer) -> Result<(), String> {
+    pub(crate) fn validate(&self, renderer: &Renderer) -> MResult<()> {
         let lightmap_bitmap: Option<(&Bitmap, &str)> = if let Some(path) = self.lightmap_bitmap.as_ref() {
             let Some(bitmap) = renderer.bitmaps.get(path) else {
-                return Err(format!("BSP refers to lightmap bitmap {path} which is not loaded in the renderer"))
+                return Err(Error::from_data_error_string(format!("BSP refers to lightmap bitmap {path} which is not loaded in the renderer")))
             };
             Some((bitmap, path))
         }
@@ -58,11 +59,11 @@ impl AddBSPParameter {
         for (lightmap_index, lightmap) in self.lightmap_sets.iter().enumerate() {
             if let Some(bitmap_index) = lightmap.lightmap_index {
                 let Some((bitmap, path)) = lightmap_bitmap else {
-                    return Err(format!("BSP lightmap #{lightmap_index} has a bitmap index, but no lightmap bitmap is set"))
+                    return Err(Error::from_data_error_string(format!("BSP lightmap #{lightmap_index} has a bitmap index, but no lightmap bitmap is set")))
                 };
                 let bitmap_count = bitmap.bitmaps.len();
                 if bitmap_index >= bitmap_count {
-                    return Err(format!("BSP lightmap #{lightmap_index} refers to bitmap #{bitmap_index}, but the referenced bitmap {path} has only {bitmap_count} bitmap(s)"))
+                    return Err(Error::from_data_error_string(format!("BSP lightmap #{lightmap_index} refers to bitmap #{bitmap_index}, but the referenced bitmap {path} has only {bitmap_count} bitmap(s)")))
                 }
             }
 
@@ -70,22 +71,22 @@ impl AddBSPParameter {
                 let vertex_count = material.shader_vertices.len();
                 if let Some(lightmap_vertex_count) = material.lightmap_vertices.as_ref().map(|v| v.len()) {
                     if lightmap_vertex_count != vertex_count {
-                        return Err(format!("BSP material #{material_index} of lightmap #{lightmap_index} has a shader vertex count of {vertex_count}, but a lightmap vertex count of {lightmap_vertex_count}"))
+                        return Err(Error::from_data_error_string(format!("BSP material #{material_index} of lightmap #{lightmap_index} has a pipeline vertex count of {vertex_count}, but a lightmap vertex count of {lightmap_vertex_count}")))
                     }
                     if lightmap_bitmap.is_none() {
-                        return Err(format!("BSP material #{material_index} of lightmap #{lightmap_index} has lightmap vertices when no lightmap bitmap is set"))
+                        return Err(Error::from_data_error_string(format!("BSP material #{material_index} of lightmap #{lightmap_index} has lightmap vertices when no lightmap bitmap is set")))
                     }
                 }
 
                 let shader_path = &material.shader;
                 let Some(Shader { shader_type, .. }) = renderer.shaders.get(shader_path) else {
-                    return Err(format!("BSP material #{material_index} of lightmap #{lightmap_index} references shader {shader_path} which is not loaded"))
+                    return Err(Error::from_data_error_string(format!("BSP material #{material_index} of lightmap #{lightmap_index} references pipeline {shader_path} which is not loaded")))
                 };
 
                 // No reason we can't actually render this on a BSP, but these tags are intended to
                 // only be rendered on objects.
                 if *shader_type == ShaderType::Model {
-                    return Err(format!("BSP material #{material_index} of lightmap #{lightmap_index} references shader {shader_path}, a {shader_type:?} type which isn't allowed for BSPs"))
+                    return Err(Error::from_data_error_string(format!("BSP material #{material_index} of lightmap #{lightmap_index} references pipeline {shader_path}, a {shader_type:?} type which isn't allowed for BSPs")))
                 }
             }
         }

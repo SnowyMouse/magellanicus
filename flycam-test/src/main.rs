@@ -189,15 +189,15 @@ impl ApplicationHandler for FlycamTestHandler {
             return event_loop.exit();
         }
 
-        // if let Err(e) = self.load_shaders() {
-        //     eprintln!("ERROR LOADING shaders: {e}");
-        //     return event_loop.exit();
-        // }
+        if let Err(e) = self.load_shaders() {
+            eprintln!("ERROR LOADING shaders: {e}");
+            return event_loop.exit();
+        }
 
-        // if let Err(e) = self.load_bsps() {
-        //     eprintln!("ERROR: {e}");
-        //     event_loop.exit();
-        // }
+        if let Err(e) = self.load_bsps() {
+            eprintln!("ERROR: {e}");
+            return event_loop.exit();
+        }
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
@@ -321,7 +321,7 @@ impl FlycamTestHandler {
             Self::load_shader(renderer, &path, tag).map_err(|e| format!("Failed to load shader {path}: {e}"))?;
         }
 
-        todo!()
+        Ok(())
     }
 
     fn load_shader(renderer: &mut Renderer, path: &&TagPath, tag: &Box<dyn PrimaryTagStructDyn>) -> Result<(), String> {
@@ -502,7 +502,7 @@ impl FlycamTestHandler {
                         })
                         .collect();
 
-                    let lightmap = lightmap
+                    let lightmap: Vec<LightmapVertex> = lightmap
                         .map(|f| LightmapVertex {
                             lightmap_texture_coords: [f.texture_coords.x as f32, f.texture_coords.y as f32]
                         })
@@ -510,7 +510,7 @@ impl FlycamTestHandler {
 
                     add_lightmap.materials.push(AddBSPParameterLightmapMaterial {
                         shader_vertices,
-                        lightmap_vertices: Some(lightmap),
+                        lightmap_vertices: (!lightmap.is_empty()).then_some(lightmap),
                         indices,
                         shader: shader_path.to_native_path()
                     });
@@ -518,7 +518,7 @@ impl FlycamTestHandler {
                 add_bsp.lightmap_sets.push(add_lightmap);
             }
 
-            renderer.add_bsp(&path.to_native_path(), add_bsp)?;
+            renderer.add_bsp(&path.to_native_path(), add_bsp).map_err(|e| format!("Failed to load BSP {path}: {e}"))?;
         }
 
         Ok(())

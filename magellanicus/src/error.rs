@@ -1,6 +1,7 @@
 use alloc::string::String;
 use alloc::fmt::{Write, Display};
-use core::fmt::Formatter;
+use core::fmt::{Arguments, Formatter};
+use std::format;
 
 /// General Result type
 pub type MResult<T> = Result<T, Error>;
@@ -10,6 +11,12 @@ pub type MResult<T> = Result<T, Error>;
 pub enum Error {
     GraphicsAPIError { backend: &'static str, error: String },
     DataError { error: String }
+}
+
+impl Error {
+    pub(crate) fn from_data_error_string(error: String) -> Self {
+        Error::DataError { error }
+    }
 }
 
 impl Display for Error {

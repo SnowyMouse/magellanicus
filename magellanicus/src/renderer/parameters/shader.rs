@@ -22,7 +22,7 @@ impl AddShaderParameter {
 }
 
 pub enum AddShaderData {
-    /// Basic shader that just renders a single texture. This does not map to an actual shader group
+    /// Basic pipeline that just renders a single texture. This does not map to an actual pipeline group
     /// and is to be removed once all shaders are implemented
     BasicShader(AddShaderBasicShaderData)
 }

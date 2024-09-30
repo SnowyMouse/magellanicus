@@ -17,20 +17,41 @@ use vulkano::pipeline::layout::PipelineDescriptorSetLayoutCreateInfo;
 use crate::error::MResult;
 use crate::renderer::vulkan::vertex::*;
 
-#[derive(Copy, Clone, Default)]
-pub struct PipelineSettings {
-    pub vertex_inputs: &'static [VertexPipelineInput],
-    pub writes_depth: bool
+#[derive(Copy, Clone, Default, PartialEq)]
+pub enum DepthAccess {
+    /// The depth as determined by the vertex shader must be less than or equal.
+    ///
+    /// This will pass as long as nothing is in front of the vertices.
+    ///
+    /// This is used primarily for transparent shaders.
+    DepthReadOnlyTransparent,
+
+    #[default]
+    /// The depth as determined by the vertex shader has to equal.
+    ///
+    /// This will pass if the depth buffer was written to already with the exact vertices.
+    ///
+    /// This is used if one needs to overlay on top of something already written.
+    DepthReadOnly,
+
+    /// The depth as determined by the vertex must be less than or equal.
+    ///
+    /// This will pass as long as nothing is in front of the vertices.
+    ///
+    /// This is used if one needs to write to the depth buffer.
+    DepthWrite
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub enum VertexPipelineInput {
-    Position,
-    TextureCoordinate,
-    Normal,
-    Binormal,
-    Tangent,
-    LightmapTextureCoordinate,
+#[derive(Clone, Default)]
+pub struct PipelineSettings {
+    /// Determines how depth is accessed.
+    pub depth_access: DepthAccess,
+
+    /// Vertex data expected to be bound and sent to the shader.
+    pub vertex_buffer_descriptions: Vec<VertexBufferDescription>,
+
+    /// If true, enable backface culling and only render on the front side.
+    pub backface_culling: bool
 }
 
 pub fn load_pipeline(
@@ -39,40 +60,14 @@ pub fn load_pipeline(
     load_fragment_shader: fn (Arc<Device>) -> Result<Arc<vulkano::shader::ShaderModule>, vulkano::Validated<vulkano::VulkanError>>,
     settings: &PipelineSettings
 ) -> MResult<Arc<GraphicsPipeline>> {
-    if settings.vertex_inputs.is_empty() {
-        panic!("Vertex inputs is empty!")
-    }
-    for i in settings.vertex_inputs.iter().enumerate() {
-        for j in settings.vertex_inputs.iter().enumerate() {
-            if i.0 == j.0 {
-                continue
-            }
-            if i.1 == j.1 {
-                panic!("Duplicate vertex inputs!")
-            }
-        }
-    }
-    if !settings.vertex_inputs.contains(&VertexPipelineInput::Position) {
-        panic!("No vertex positions!")
-    }
-
     let vertex_shader = load_vertex_shader(device.clone())?
         .entry_point("main")
-        .expect("Missing main() entry point for vertex shader!");
+        .expect("Missing main() entry point for vertex pipeline!");
     let fragment_shader = load_fragment_shader(device.clone())?
         .entry_point("main")
-        .expect("Missing main() entry point for fragment shader!");
+        .expect("Missing main() entry point for fragment pipeline!");
 
-    let inputs = settings.vertex_inputs.iter().map(|m| match m {
-        VertexPipelineInput::Position => VulkanModelVertexPosition::per_vertex(),
-        VertexPipelineInput::Normal => VulkanModelVertexNormal::per_vertex(),
-        VertexPipelineInput::Binormal => VulkanModelVertexBinormal::per_vertex(),
-        VertexPipelineInput::Tangent => VulkanModelVertexTangent::per_vertex(),
-        VertexPipelineInput::TextureCoordinate => VulkanModelVertexTextureCoords::per_vertex(),
-        VertexPipelineInput::LightmapTextureCoordinate => VulkanModelVertexLightmapTextureCoords::per_vertex(),
-    }).collect::<Vec<VertexBufferDescription>>();
-
-    let vertex_input_state = inputs.definition(&vertex_shader.info().input_interface)?;
+    let vertex_input_state = settings.vertex_buffer_descriptions.definition(&vertex_shader.info().input_interface)?;
     let stages = [
         PipelineShaderStageCreateInfo::new(vertex_shader),
         PipelineShaderStageCreateInfo::new(fragment_shader),
@@ -100,9 +95,8 @@ pub fn load_pipeline(
             input_assembly_state: Some(InputAssemblyState::default()),
             viewport_state: Some(ViewportState::default()),
             rasterization_state: Some(RasterizationState {
-                // FIXME: backface culling
-                // cull_mode: CullMode::Back,
-                // front_face: FrontFace::Clockwise,
+                cull_mode: CullMode::None,
+                front_face: FrontFace::Clockwise, // TODO: Verify if this works or if it needs to be counter clockwise
                 ..RasterizationState::default()
             }),
             multisample_state: Some(MultisampleState::default()),
@@ -110,15 +104,23 @@ pub fn load_pipeline(
                 subpass.color_attachment_formats.len() as u32,
                 ColorBlendAttachmentState::default(),
             )),
-            dynamic_state: [DynamicState::Viewport].into_iter().collect(),
+            dynamic_state: [
+                DynamicState::Viewport,
+                DynamicState::CullMode,
+            ].into_iter().collect(),
             depth_stencil_state: Some(DepthStencilState {
                 depth: Some(DepthState {
-                    write_enable: settings.writes_depth,
-                    compare_op: CompareOp::LessOrEqual
+                    write_enable: settings.depth_access == DepthAccess::DepthWrite,
+                    compare_op: match settings.depth_access {
+                        DepthAccess::DepthWrite => CompareOp::LessOrEqual,
+                        DepthAccess::DepthReadOnly => CompareOp::Equal,
+                        DepthAccess::DepthReadOnlyTransparent => CompareOp::LessOrEqual,
+                    }
                 }),
                 ..DepthStencilState::default()
             }),
             subpass: Some(subpass.into()),
+
             ..GraphicsPipelineCreateInfo::layout(layout)
         }
     )?;

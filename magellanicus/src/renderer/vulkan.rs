@@ -2,36 +2,45 @@ use alloc::string::{String, ToString};
 
 mod bitmap;
 mod geometry;
-mod shader;
+mod pipeline;
 mod bsp;
 mod sky;
 mod helper;
 mod player_viewport;
 mod vertex;
+mod material;
 
 use std::sync::Arc;
-use std::format;
+use std::{format, vec};
 use std::fmt::{Debug, Display};
 use std::println;
 use std::boxed::Box;
+use std::collections::BTreeMap;
+use std::vec::Vec;
 use raw_window_handle::{HasDisplayHandle, HasRawDisplayHandle, HasRawWindowHandle};
-use vulkano::command_buffer::allocator::{CommandBufferAllocator, StandardCommandBufferAllocator};
-use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
+use vulkano::command_buffer::allocator::{CommandBufferAllocator, StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo};
+use vulkano::descriptor_set::allocator::{StandardDescriptorSetAllocator, StandardDescriptorSetAllocatorCreateInfo};
 use vulkano::device::{Device, DeviceExtensions, Queue};
 use vulkano::instance::{Instance, InstanceCreateInfo, InstanceExtensions};
 use vulkano::memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator};
-use vulkano::swapchain::Surface;
+use vulkano::swapchain::{Surface, Swapchain};
 use vulkano::{ValidationError, Version, VulkanLibrary};
-use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer, PrimaryCommandBufferAbstract};
+use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferInheritanceInfo, CommandBufferInheritanceRenderPassType, CommandBufferInheritanceRenderingInfo, CommandBufferUsage, PrimaryAutoCommandBuffer, PrimaryCommandBufferAbstract, SecondaryAutoCommandBuffer};
+use vulkano::format::Format;
+use vulkano::image::Image;
+use vulkano::pipeline::GraphicsPipeline;
 use vulkano::sync::GpuFuture;
 pub use bitmap::*;
 pub use geometry::*;
-pub use shader::*;
+pub use pipeline::*;
 pub use bsp::*;
 pub use sky::*;
+pub use material::*;
 pub use player_viewport::*;
 use crate::error::{Error, MResult};
 use crate::renderer::Resolution;
+use crate::renderer::vulkan::helper::{build_swapchain, LoadedVulkan};
+use crate::renderer::vulkan::solid_color::SolidColorShader;
 
 pub struct VulkanRenderer {
     current_resolution: Resolution,
@@ -41,20 +50,51 @@ pub struct VulkanRenderer {
     command_buffer_allocator: StandardCommandBufferAllocator,
     descriptor_set_allocator: StandardDescriptorSetAllocator,
     queue: Arc<Queue>,
-    future: Option<Box<dyn GpuFuture>>
+    future: Option<Box<dyn GpuFuture>>,
+    pipelines: BTreeMap<VulkanPipelineType, Arc<dyn VulkanPipelineData>>,
+    output_format: Format,
+    swapchain: Arc<Swapchain>,
+    surface: Arc<Surface>,
+    swapchain_images: Vec<Arc<Image>>
 }
 
 impl VulkanRenderer {
-    pub fn new(renderer_parameters: &super::RendererParameters, surface: Arc<impl HasRawWindowHandle + HasRawDisplayHandle + Send + Sync + 'static>) -> MResult<Self> {
-        let (instance, device, queue) = helper::load_vulkan_and_get_queue(surface)?;
+    pub fn new(
+        renderer_parameters: &super::RendererParameters,
+        surface: Arc<impl HasRawWindowHandle + HasRawDisplayHandle + Send + Sync + 'static>,
+        resolution: Resolution
+    ) -> MResult<Self> {
+        let LoadedVulkan { device, instance, surface, queue} = helper::load_vulkan_and_get_queue(surface)?;
 
-        let command_buffer_allocator =
-            StandardCommandBufferAllocator::new(device.clone(), Default::default());
-        let descriptor_set_allocator =
-            StandardDescriptorSetAllocator::new(device.clone(), Default::default());
+        let command_buffer_allocator = StandardCommandBufferAllocator::new(
+            device.clone(),
+            StandardCommandBufferAllocatorCreateInfo {
+                primary_buffer_count: 32,
+                secondary_buffer_count: 16 * 1024,
+                ..Default::default()
+            }
+        );
+
+        let descriptor_set_allocator = StandardDescriptorSetAllocator::new(
+            device.clone(),
+            StandardDescriptorSetAllocatorCreateInfo {
+                set_count: 16 * 1024,
+                ..Default::default()
+            }
+        );
 
         let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
         let future = Some(vulkano::sync::now(device.clone()).boxed());
+
+        let output_format = device
+            .physical_device()
+            .surface_formats(surface.as_ref(), Default::default())
+            .unwrap()[0]
+            .0;
+
+        let (swapchain, swapchain_images) = build_swapchain(device.clone(), surface.clone(), output_format, resolution)?;
+
+        let pipelines = load_all_pipelines(device.clone())?;
 
         Ok(Self {
             current_resolution: renderer_parameters.resolution,
@@ -64,7 +104,12 @@ impl VulkanRenderer {
             memory_allocator,
             device,
             queue,
-            future
+            future,
+            pipelines,
+            output_format,
+            swapchain,
+            surface,
+            swapchain_images
         })
     }
 
@@ -76,6 +121,23 @@ impl VulkanRenderer {
             .expect("failed to execute the command list")
             .boxed();
         self.future = Some(future)
+    }
+
+    fn generate_secondary_buffer_builder(&self) -> MResult<AutoCommandBufferBuilder<SecondaryAutoCommandBuffer>> {
+        let result = AutoCommandBufferBuilder::secondary(
+            &self.command_buffer_allocator,
+            self.queue.queue_family_index(),
+            CommandBufferUsage::MultipleSubmit,
+            CommandBufferInheritanceInfo {
+                render_pass: Some(CommandBufferInheritanceRenderPassType::BeginRendering(CommandBufferInheritanceRenderingInfo {
+                    color_attachment_formats: vec![Some(self.output_format)],
+                    depth_attachment_format: Some(Format::D16_UNORM),
+                    ..CommandBufferInheritanceRenderingInfo::default()
+                })),
+                ..CommandBufferInheritanceInfo::default()
+            }
+        )?;
+        Ok(result)
     }
 }
 
@@ -114,5 +176,8 @@ impl From<vulkano::LoadingError> for Error {
 impl Error {
     fn from_vulkan_error(error: String) -> Self {
         Self::GraphicsAPIError { backend: "Vulkan", error }
+    }
+    fn from_vulkan_impl_error(error: String) -> Self {
+        Self::GraphicsAPIError { backend: "Vulkan-IMPL", error }
     }
 }

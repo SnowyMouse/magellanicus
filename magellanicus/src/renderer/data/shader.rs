@@ -1,21 +1,24 @@
 use crate::error::MResult;
 use crate::renderer::{AddShaderBasicShaderData, AddShaderData, AddShaderParameter, Renderer};
-use crate::renderer::vulkan::{VulkanRenderer, VulkanShaderData};
+use crate::renderer::vulkan::{VulkanRenderer, VulkanMaterialShaderData};
 
 pub struct Shader {
-    pub vulkan: VulkanShaderData,
+    pub vulkan: VulkanMaterialShaderData,
     pub shader_type: ShaderType
 }
 
 impl Shader {
     pub fn load_from_parameters(renderer: &mut Renderer, add_shader_parameter: AddShaderParameter) -> MResult<Self> {
-        match add_shader_parameter.data {
-            AddShaderData::BasicShader(n) => Self::load_basic_shader(renderer, n)
-        }
-    }
+        let shader_type = match &add_shader_parameter.data {
+            AddShaderData::BasicShader(s) => s.shader_type
+        };
 
-    fn load_basic_shader(renderer: &mut Renderer, data: AddShaderBasicShaderData) -> MResult<Self> {
-        todo!()
+        let vulkan = VulkanMaterialShaderData::new_from_parameters(
+            renderer,
+            add_shader_parameter
+        )?;
+
+        Ok(Self { vulkan, shader_type })
     }
 }
 

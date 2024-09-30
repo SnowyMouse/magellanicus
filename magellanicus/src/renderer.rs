@@ -48,7 +48,7 @@ impl Renderer {
         // TODO: add player viewports
 
         Ok(Self {
-            renderer: VulkanRenderer::new(&parameters, surface.clone())?,
+            renderer: VulkanRenderer::new(&parameters, surface.clone(), parameters.resolution)?,
             player_viewports,
             bitmaps: BTreeMap::new(),
             shaders: BTreeMap::new(),
@@ -73,36 +73,46 @@ impl Renderer {
 
     /// Add a bitmap with the given parameters.
     ///
-    /// If the bitmap has the same path as an already loaded bitmap, that bitmap will be replaced.
+    /// Note that replacing bitmaps is not yet supported.
     ///
     /// This will error if:
     /// - `bitmap` is invalid
     /// - replacing a bitmap would break any dependencies (HUDs, shaders, etc.)
     pub fn add_bitmap(&mut self, path: &str, bitmap: AddBitmapParameter) -> MResult<()> {
-        bitmap.validate()?;
+        let bitmap_path = Arc::new(path.to_owned());
+        if self.bsps.contains_key(&bitmap_path) {
+            return Err(Error::from_data_error_string(format!("{path} already exists (replacing bitmaps is not yet supported)")))
+        }
 
+        bitmap.validate()?;
         let bitmap = Bitmap::load_from_parameters(self, bitmap)?;
-        self.bitmaps.insert(Arc::new(path.to_owned()), bitmap);
+        self.bitmaps.insert(bitmap_path, bitmap);
         Ok(())
     }
 
     /// Add a shader.
     ///
-    /// If the shader has a same path as an already loaded shader, that shader will be replaced.
+    /// Note that replacing shaders is not yet supported.
     ///
     /// This will error if:
-    /// - `shader` is invalid
-    /// - `shader` contains invalid dependencies
-    /// - replacing a shader would break any dependencies
+    /// - `pipeline` is invalid
+    /// - `pipeline` contains invalid dependencies
+    /// - replacing a pipeline would break any dependencies
     pub fn add_shader(&mut self, path: &str, shader: AddShaderParameter) -> MResult<()> {
-        shader.validate(self)?;
+        let shader_path = Arc::new(path.to_owned());
+        if self.bsps.contains_key(&shader_path) {
+            return Err(Error::from_data_error_string(format!("{path} already exists (replacing shaders is not yet supported)")))
+        }
 
+        shader.validate(self)?;
         let shader = Shader::load_from_parameters(self, shader)?;
-        self.shaders.insert(Arc::new(path.to_owned()), shader);
+        self.shaders.insert(shader_path, shader);
         Ok(())
     }
 
     /// Add a geometry.
+    ///
+    /// Note that replacing geometries is not yet supported.
     ///
     /// This will error if:
     /// - `geometry` is invalid
@@ -114,6 +124,8 @@ impl Renderer {
 
     /// Add a sky.
     ///
+    /// Note that replacing skies is not yet supported.
+    ///
     /// This will error if:
     /// - `sky` is invalid
     /// - `sky` contains invalid dependencies
@@ -123,11 +135,21 @@ impl Renderer {
 
     /// Add a BSP.
     ///
+    /// Note that replacing BSPs is not yet supported.
+    ///
     /// This will error if:
     /// - `bsp` is invalid
     /// - `bsp` contains invalid dependencies
-    pub fn add_bsp(&mut self, path: &str, bsp: AddBSPParameter) -> Result<(), String> {
-        todo!()
+    pub fn add_bsp(&mut self, path: &str, bsp: AddBSPParameter) -> MResult<()> {
+        let bsp_path = Arc::new(path.to_owned());
+        if self.bsps.contains_key(&bsp_path) {
+            return Err(Error::from_data_error_string(format!("{path} already exists (replacing BSPs is not yet supported)")))
+        }
+
+        bsp.validate(self)?;
+        let bsp = BSP::load_from_parameters(self, bsp)?;
+        self.bsps.insert(bsp_path, bsp);
+        Ok(())
     }
 
     /// Set the current BSP.
