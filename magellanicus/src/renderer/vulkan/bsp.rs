@@ -41,7 +41,7 @@ impl VulkanBSPData {
 
                 let sampler = Sampler::new(
                     renderer.renderer.device.clone(),
-                    SamplerCreateInfo::simple_repeat_linear_no_mipmap()
+                    SamplerCreateInfo::simple_repeat_linear()
                 )?;
 
                 images.insert(i, (lightmap, sampler));

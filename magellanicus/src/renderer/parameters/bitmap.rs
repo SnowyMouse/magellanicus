@@ -1,4 +1,4 @@
-mod mipmap_iterator;
+pub(crate) mod mipmap_iterator;
 
 use alloc::vec::Vec;
 use alloc::string::{String, ToString};

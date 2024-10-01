@@ -205,7 +205,7 @@ impl VulkanRenderer {
 
         let view = glam::Mat4::look_to_lh(
             glam::Vec3::new(98.4934, -157.639, 2.70473),
-            glam::Vec3::new(0.0, 1.0, 0.0),
+            glam::Vec3::new(0.0, 1.0, -0.25).normalize(),
             glam::Vec3::new(0.0, 0.0, -1.0)
         );
 

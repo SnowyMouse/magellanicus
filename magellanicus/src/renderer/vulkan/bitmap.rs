@@ -1,5 +1,6 @@
-use std::println;
-use vulkano::image::{Image, ImageCreateInfo, ImageTiling, ImageType, ImageUsage, SampleCount};
+use std::{format, println};
+use std::num::NonZeroUsize;
+use vulkano::image::{Image, ImageAspects, ImageCreateInfo, ImageSubresourceLayers, ImageTiling, ImageType, ImageUsage, SampleCount};
 use vulkano::memory::allocator::{AllocationCreateInfo, MemoryAllocatePreference, MemoryTypeFilter};
 use crate::error::{Error, MResult};
 use crate::renderer::{AddBitmapBitmapParameter, BitmapFormat, BitmapType, Renderer};
@@ -11,8 +12,9 @@ use vulkano::DeviceSize;
 use vulkano::format::Format;
 use std::string::ToString;
 use vulkano::command_buffer::allocator::CommandBufferAllocator;
-use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, CopyBufferToImageInfo, PrimaryCommandBufferAbstract};
+use vulkano::command_buffer::{AutoCommandBufferBuilder, BufferImageCopy, CommandBufferUsage, CopyBufferToImageInfo, PrimaryCommandBufferAbstract};
 use vulkano::sync::GpuFuture;
+use crate::renderer::mipmap_iterator::{MipmapFaceIterator, MipmapTextureIterator, MipmapType};
 
 pub struct VulkanBitmapData {
     pub image: Arc<Image>
@@ -141,10 +143,49 @@ impl VulkanBitmapData {
             CommandBufferUsage::OneTimeSubmit,
         )?;
 
-        command_buffer_builder.copy_buffer_to_image(CopyBufferToImageInfo::buffer_image(
-            upload_buffer,
-            image.clone()
-        ))?;
+        let iterator = MipmapTextureIterator::new(
+            NonZeroUsize::new(parameter.resolution.width as usize).unwrap(),
+            NonZeroUsize::new(parameter.resolution.height as usize).unwrap(),
+            match parameter.bitmap_type {
+                BitmapType::Cubemap => MipmapType::Cubemap,
+                BitmapType::Dim2D => MipmapType::TwoDimensional,
+                BitmapType::Dim3D { depth } => MipmapType::ThreeDimensional(NonZeroUsize::new(depth as usize).unwrap())
+            },
+            NonZeroUsize::new(parameter.format.block_pixel_length()).unwrap(),
+            Some(parameter.mipmap_count as usize),
+        );
+
+        let mut offset = 0;
+        let block_size = parameter.format.block_byte_size();
+        let pixel_size = parameter.format.block_pixel_length();
+        for i in iterator {
+            let size = block_size * i.block_count;
+            command_buffer_builder.copy_buffer_to_image(CopyBufferToImageInfo {
+                regions: [
+                    BufferImageCopy {
+                        image_subresource: ImageSubresourceLayers {
+                            aspects: ImageAspects::COLOR,
+                            mip_level: i.mipmap_index as u32,
+                            array_layers: i.face_index as u32..(i.face_index as u32 + 1)
+                        },
+                        buffer_offset: offset,
+                        buffer_image_height: (i.block_height * pixel_size) as u32,
+                        buffer_row_length: (i.block_width * pixel_size) as u32,
+                        image_offset: [0,0,0],
+                        image_extent: [i.width as u32, i.height as u32, i.depth as u32],
+                        ..Default::default()
+                    }
+                ].into(),
+                ..CopyBufferToImageInfo::buffer_image(
+                    upload_buffer.clone(),
+                    image.clone()
+                )
+            }).unwrap();
+
+            offset += size as DeviceSize;
+        }
+
+
 
         let buffer = command_buffer_builder.build()?;
         vulkan_renderer.execute_command_list(buffer);
