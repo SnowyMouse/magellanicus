@@ -29,5 +29,6 @@ pub enum AddShaderData {
 
 pub struct AddShaderBasicShaderData {
     pub bitmap: String,
-    pub shader_type: ShaderType
+    pub shader_type: ShaderType,
+    pub alpha_tested: bool
 }

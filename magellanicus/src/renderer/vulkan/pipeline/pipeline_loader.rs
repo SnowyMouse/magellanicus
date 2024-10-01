@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::{println, vec};
 use std::vec::Vec;
 use vulkano::format::Format;
-use vulkano::pipeline::graphics::color_blend::{ColorBlendAttachmentState, ColorBlendState};
+use vulkano::pipeline::graphics::color_blend::{AttachmentBlend, ColorBlendAttachmentState, ColorBlendState};
 use vulkano::pipeline::graphics::depth_stencil::{CompareOp, DepthState, DepthStencilState};
 use vulkano::pipeline::graphics::GraphicsPipelineCreateInfo;
 use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
@@ -90,6 +90,12 @@ pub fn load_pipeline(
         ..Default::default()
     };
 
+    let mut blend = ColorBlendState::with_attachment_states(
+        subpass.color_attachment_formats.len() as u32,
+        ColorBlendAttachmentState::default(),
+    );
+    blend.attachments[0].blend = Some(AttachmentBlend::alpha());
+
     let pipeline = GraphicsPipeline::new(
         device.clone(),
         None,
@@ -99,15 +105,11 @@ pub fn load_pipeline(
             input_assembly_state: Some(InputAssemblyState::default()),
             viewport_state: Some(ViewportState::default()),
             rasterization_state: Some(RasterizationState {
-                cull_mode: CullMode::None,
-                front_face: FrontFace::Clockwise, // TODO: Verify if this works or if it needs to be counter clockwise
+                front_face: FrontFace::Clockwise,
                 ..RasterizationState::default()
             }),
             multisample_state: Some(MultisampleState::default()),
-            color_blend_state: Some(ColorBlendState::with_attachment_states(
-                subpass.color_attachment_formats.len() as u32,
-                ColorBlendAttachmentState::default(),
-            )),
+            color_blend_state: Some(blend),
             dynamic_state: [
                 DynamicState::Viewport,
                 DynamicState::CullMode,

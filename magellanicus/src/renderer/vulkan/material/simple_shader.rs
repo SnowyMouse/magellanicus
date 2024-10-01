@@ -6,8 +6,8 @@ use vulkano::command_buffer::allocator::CommandBufferAllocator;
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferInheritanceInfo, CommandBufferInheritanceRenderPassType, CommandBufferInheritanceRenderingInfo, CommandBufferUsage, PrimaryAutoCommandBuffer, SecondaryAutoCommandBuffer};
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::format::Format;
-use vulkano::image::Image;
-use vulkano::image::sampler::{Sampler, SamplerCreateInfo};
+use vulkano::image::{Image, ImageAspects, ImageSubresourceRange};
+use vulkano::image::sampler::{ComponentMapping, ComponentSwizzle, Sampler, SamplerCreateInfo};
 use vulkano::image::view::{ImageView, ImageViewCreateInfo};
 use vulkano::padded::Padded;
 use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
@@ -33,7 +33,19 @@ impl VulkanSimpleShaderMaterial {
             .image
             .clone();
 
-        let diffuse = ImageView::new_default(diffuse.clone())?;
+        let diffuse = ImageView::new(diffuse.clone(), ImageViewCreateInfo {
+            component_mapping: ComponentMapping {
+                a: ComponentSwizzle::One,
+                ..Default::default()
+            },
+            subresource_range: ImageSubresourceRange {
+                aspects: ImageAspects::COLOR,
+                mip_levels: 0..diffuse.mip_levels(),
+                array_layers: 0..diffuse.array_layers()
+            },
+            format: diffuse.format(),
+            ..Default::default()
+        }).unwrap();
 
         let diffuse_sampler = Sampler::new(
             renderer.renderer.device.clone(),

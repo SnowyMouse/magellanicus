@@ -372,7 +372,8 @@ impl FlycamTestHandler {
                 AddShaderParameter {
                     data: AddShaderData::BasicShader(AddShaderBasicShaderData {
                         bitmap: tag.diffuse.base_map.path().ok_or_else(|| format!("{path} has no base map"))?.to_string(),
-                        shader_type: ShaderType::Environment
+                        shader_type: ShaderType::Environment,
+                        alpha_tested: tag.properties.flags.alpha_tested
                     })
                 }
             },
@@ -381,7 +382,8 @@ impl FlycamTestHandler {
                 AddShaderParameter {
                     data: AddShaderData::BasicShader(AddShaderBasicShaderData {
                         bitmap: tag.maps.base_map.path().ok_or_else(|| format!("{path} has no base map"))?.to_string(),
-                        shader_type: ShaderType::Model
+                        shader_type: ShaderType::Model,
+                        alpha_tested: !tag.properties.flags.not_alpha_tested
                     })
                 }
             },
@@ -396,7 +398,8 @@ impl FlycamTestHandler {
                             .and_then(|b| b.parameters.map.path())
                             .map(|b| b.to_string())
                             .unwrap_or_else(|| TagPath::from_path("ui\\shell\\bitmaps\\white.bitmap").unwrap().to_string()),
-                        shader_type: ShaderType::TransparentChicago
+                        shader_type: ShaderType::TransparentChicago,
+                        alpha_tested: true
                     })
                 }
             },
@@ -411,7 +414,8 @@ impl FlycamTestHandler {
                             .and_then(|b| b.parameters.map.path())
                             .map(|b| b.to_string())
                             .unwrap_or_else(|| TagPath::from_path("ui\\shell\\bitmaps\\white.bitmap").unwrap().to_string()),
-                        shader_type: ShaderType::TransparentChicago
+                        shader_type: ShaderType::TransparentChicago,
+                        alpha_tested: true
                     })
                 }
             },
@@ -426,7 +430,8 @@ impl FlycamTestHandler {
                             .and_then(|b| b.parameters.map.path())
                             .map(|b| b.to_string())
                             .unwrap_or_else(|| TagPath::from_path("ui\\shell\\bitmaps\\white.bitmap").unwrap().to_string()),
-                        shader_type: ShaderType::TransparentGeneric
+                        shader_type: ShaderType::TransparentGeneric,
+                        alpha_tested: true
                     })
                 }
             },
@@ -440,7 +445,8 @@ impl FlycamTestHandler {
                             .path()
                             .map(|b| b.to_string())
                             .unwrap_or_else(|| TagPath::from_path("ui\\shell\\bitmaps\\white.bitmap").unwrap().to_string()),
-                        shader_type: ShaderType::TransparentGlass
+                        shader_type: ShaderType::TransparentGlass,
+                        alpha_tested: true
                     })
                 }
             },
@@ -454,7 +460,8 @@ impl FlycamTestHandler {
                             .path()
                             .map(|b| b.to_string())
                             .unwrap_or_else(|| TagPath::from_path("ui\\shell\\bitmaps\\white.bitmap").unwrap().to_string()),
-                        shader_type: ShaderType::TransparentMeter
+                        shader_type: ShaderType::TransparentMeter,
+                        alpha_tested: true
                     })
                 }
             },
@@ -463,7 +470,8 @@ impl FlycamTestHandler {
                 AddShaderParameter {
                     data: AddShaderData::BasicShader(AddShaderBasicShaderData {
                         bitmap: TagPath::from_path("ui\\shell\\bitmaps\\white.bitmap").unwrap().to_string(),
-                        shader_type: ShaderType::TransparentPlasma
+                        shader_type: ShaderType::TransparentPlasma,
+                        alpha_tested: true
                     })
                 }
             },
@@ -472,7 +480,8 @@ impl FlycamTestHandler {
                 AddShaderParameter {
                     data: AddShaderData::BasicShader(AddShaderBasicShaderData {
                         bitmap: TagPath::from_path("ui\\shell\\bitmaps\\white.bitmap").unwrap().to_string(),
-                        shader_type: ShaderType::TransparentWater
+                        shader_type: ShaderType::TransparentWater,
+                        alpha_tested: true
                     })
                 }
             },

@@ -180,7 +180,7 @@ impl VulkanBitmapData {
                     upload_buffer.clone(),
                     image.clone()
                 )
-            }).unwrap();
+            })?;
 
             offset += size as DeviceSize;
         }

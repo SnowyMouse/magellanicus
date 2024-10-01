@@ -7,5 +7,9 @@ layout(set = 0, binding = 1) uniform sampler s;
 layout(set = 0, binding = 2) uniform texture2D tex;
 
 void main() {
-    f_color = texture(sampler2D(tex, s), tex_coords);
+    vec4 color = texture(sampler2D(tex, s), tex_coords);
+    if(color.a == 0.0) {
+        discard;
+    }
+    f_color = color;
 }
