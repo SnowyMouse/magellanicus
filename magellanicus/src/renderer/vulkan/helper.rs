@@ -76,6 +76,7 @@ fn create_device_and_queues(physical_device: Arc<PhysicalDevice>, device_extensi
             }],
             enabled_features: Features {
                 dynamic_rendering: true,
+                extended_dynamic_state: true,
                 ..Features::default()
             },
             ..Default::default()

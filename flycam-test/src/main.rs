@@ -2,10 +2,11 @@ use magellanicus::renderer::{AddBSPParameter, AddBSPParameterLightmapMaterial, A
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use winit::application::ApplicationHandler;
 use winit::dpi::{PhysicalSize, Size};
-use winit::event::WindowEvent;
-use winit::event_loop::{ActiveEventLoop, EventLoop};
+use winit::event::{StartCause, WindowEvent};
+use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
 
 use clap::Parser;
@@ -83,15 +84,17 @@ fn main() -> Result<(), String> {
         tags: dependencies,
         scenario_path,
         scenario_tag,
-        engine
+        engine,
     };
 
     let event_loop = EventLoop::new().unwrap();
     let mut handler = FlycamTestHandler {
         renderer: None,
         window: None,
-        scenario_data
+        scenario_data,
+        frame_time_counts: Vec::with_capacity(300),
     };
+    event_loop.set_control_flow(ControlFlow::Poll);
     event_loop.run_app(&mut handler).unwrap();
     Ok(())
 }
@@ -158,13 +161,14 @@ fn load_tags_from_cache(cache: &Path) -> Result<(TagPath, &'static Engine, HashM
 pub struct FlycamTestHandler {
     renderer: Option<Renderer>,
     window: Option<Arc<Window>>,
-    scenario_data: ScenarioData
+    scenario_data: ScenarioData,
+    frame_time_counts: Vec<Duration>
 }
 
 impl ApplicationHandler for FlycamTestHandler {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         let mut attributes = Window::default_attributes();
-        attributes.inner_size = Some(Size::Physical(PhysicalSize::new(640, 480)));
+        attributes.inner_size = Some(Size::Physical(PhysicalSize::new(1280, 960)));
         attributes.title = format!("Magellanicus - {path}", path = self.scenario_data.scenario_path);
 
         let window = Arc::new(event_loop.create_window(attributes).unwrap());
@@ -198,6 +202,19 @@ impl ApplicationHandler for FlycamTestHandler {
             eprintln!("ERROR: {e}");
             return event_loop.exit();
         }
+
+        if let Some(n) = self.scenario_data.scenario_tag.structure_bsps.items.first().and_then(|b| b.structure_bsp.path()) {
+            if let Err(e) = self.renderer.as_mut().unwrap().set_current_bsp(Some(&n.to_string())) {
+                eprintln!("ERROR: {e}");
+                return event_loop.exit();
+            }
+        }
+
+        println!("--------------------------------------------------------------------------------");
+        println!("  Loaded scenario {}...", self.scenario_data.scenario_path);
+        println!("  Engine: {}", self.scenario_data.engine.display_name);
+        println!("  Type: {}", self.scenario_data.scenario_tag._type);
+        println!("--------------------------------------------------------------------------------");
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
@@ -207,6 +224,30 @@ impl ApplicationHandler for FlycamTestHandler {
                 return;
             }
             _ => ()
+        }
+    }
+
+    fn new_events(&mut self, _event_loop: &ActiveEventLoop, cause: StartCause) {
+        if cause == StartCause::Poll {
+            let time_start = Instant::now();
+            let render_result = self.renderer.as_mut().unwrap().draw_frame();
+            if let Err(e) = render_result {
+                eprintln!("Render fail: {e}");
+            }
+            let time_end = Instant::now() - time_start;
+            self.frame_time_counts.push(time_end);
+            if self.frame_time_counts.len() == 200 {
+                let mut time = 0u128;
+                for t in &self.frame_time_counts {
+                    time = time.saturating_add(t.as_nanos());
+                }
+
+                let frames_per_second = (self.frame_time_counts.len() as f64) / (time as f64 / 1000000000.0);
+                println!("FPS: {frames_per_second}");
+
+                self.frame_time_counts.clear();
+            }
+            return
         }
     }
 }

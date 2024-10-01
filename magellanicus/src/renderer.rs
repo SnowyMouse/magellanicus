@@ -157,7 +157,7 @@ impl Renderer {
     /// If `path` is `None`, the BSP will be unloaded.
     ///
     /// Returns `Err` if `path` refers to a BSP that isn't loaded.
-    pub fn set_current_bsp(&mut self, path: Option<&str>) -> Result<(), String> {
+    pub fn set_current_bsp(&mut self, path: Option<&str>) -> MResult<()> {
         if let Some(p) = path {
             let key = self
                 .bsps
@@ -166,7 +166,7 @@ impl Renderer {
                 .map(|b| b.clone());
 
             if key.is_none() {
-                return Err(format!("Can't set current BSP to {path:?}: that BSP is not loaded"))
+                return Err(Error::from_data_error_string(format!("Can't set current BSP to {path:?}: that BSP is not loaded")))
             }
 
             self.current_bsp = key;
@@ -176,5 +176,10 @@ impl Renderer {
         }
 
         Ok(())
+    }
+
+    /// Draw a frame.
+    pub fn draw_frame(&mut self) -> MResult<()> {
+        VulkanRenderer::draw_frame(self)
     }
 }

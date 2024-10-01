@@ -58,7 +58,8 @@ pub fn load_pipeline(
     device: Arc<Device>,
     load_vertex_shader: fn (Arc<Device>) -> Result<Arc<vulkano::shader::ShaderModule>, vulkano::Validated<vulkano::VulkanError>>,
     load_fragment_shader: fn (Arc<Device>) -> Result<Arc<vulkano::shader::ShaderModule>, vulkano::Validated<vulkano::VulkanError>>,
-    settings: &PipelineSettings
+    settings: &PipelineSettings,
+    color_format: Format
 ) -> MResult<Arc<GraphicsPipeline>> {
     let vertex_shader = load_vertex_shader(device.clone())?
         .entry_point("main")
@@ -81,7 +82,7 @@ pub fn load_pipeline(
     )?;
 
     let subpass = PipelineRenderingCreateInfo {
-        color_attachment_formats: vec![Some(Format::R8G8B8A8_UNORM)],
+        color_attachment_formats: vec![Some(color_format)],
         depth_attachment_format: Some(Format::D16_UNORM),
         ..Default::default()
     };

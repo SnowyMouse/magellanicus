@@ -33,17 +33,19 @@ mod fragment {
     }
 }
 
+pub use vertex::ModelData;
+
 pub struct SolidColorShader {
     pub pipeline: Arc<GraphicsPipeline>
 }
 
 impl SolidColorShader {
-    pub fn new(device: Arc<Device>) -> MResult<Self> {
+    pub fn new(device: Arc<Device>, color_format: Format) -> MResult<Self> {
         let pipeline = load_pipeline(device, vertex::load, fragment::load, &PipelineSettings {
             depth_access: DepthAccess::DepthWrite,
             vertex_buffer_descriptions: vec![VulkanModelVertex::per_vertex()],
             backface_culling: false
-        })?;
+        }, color_format)?;
 
         Ok(Self { pipeline })
     }

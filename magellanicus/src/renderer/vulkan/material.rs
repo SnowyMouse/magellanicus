@@ -1,11 +1,12 @@
 mod simple_shader;
 
 use std::sync::Arc;
-use vulkano::command_buffer::SecondaryAutoCommandBuffer;
+use vulkano::command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer, SecondaryAutoCommandBuffer};
 use crate::error::MResult;
 use crate::renderer::{AddShaderData, AddShaderParameter, Renderer};
 use crate::renderer::vulkan::{VulkanPipelineData, VulkanRenderer};
 use crate::renderer::vulkan::material::simple_shader::VulkanSimpleShaderMaterial;
+use crate::renderer::vulkan::vertex::VulkanModelData;
 
 pub struct VulkanMaterialShaderData {
     pub pipeline_data: Arc<dyn VulkanMaterial>
@@ -29,6 +30,7 @@ pub enum VulkanMaterialShaderStage {
     Lightmap,
 }
 
+#[derive(Copy, Clone, PartialEq)]
 pub enum VulkanMaterialTextureCoordsType {
     Model,
     Lightmaps
@@ -43,7 +45,7 @@ pub trait VulkanMaterial: 'static {
     /// # Panics
     ///
     /// Panics if `stage >= self.get_stages().len()`
-    fn generate_stage_commands(&self, renderer: &Renderer, stage: usize) -> MResult<Arc<SecondaryAutoCommandBuffer>>;
+    fn generate_stage_commands(&self, renderer: &Renderer, stage: usize, model_data: &VulkanModelData, to: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>) -> MResult<()>;
 
     /// Get the texture coords type that needs to be bound.
     ///

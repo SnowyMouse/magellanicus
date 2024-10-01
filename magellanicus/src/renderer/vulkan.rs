@@ -11,11 +11,12 @@ mod vertex;
 mod material;
 
 use std::sync::Arc;
-use std::{format, vec};
+use std::{eprintln, format, vec};
 use std::fmt::{Debug, Display};
 use std::println;
 use std::boxed::Box;
 use std::collections::BTreeMap;
+use std::time::Instant;
 use std::vec::Vec;
 use raw_window_handle::{HasDisplayHandle, HasRawDisplayHandle, HasRawWindowHandle};
 use vulkano::command_buffer::allocator::{CommandBufferAllocator, StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo};
@@ -23,12 +24,16 @@ use vulkano::descriptor_set::allocator::{StandardDescriptorSetAllocator, Standar
 use vulkano::device::{Device, DeviceExtensions, Queue};
 use vulkano::instance::{Instance, InstanceCreateInfo, InstanceExtensions};
 use vulkano::memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator};
-use vulkano::swapchain::{Surface, Swapchain};
-use vulkano::{ValidationError, Version, VulkanLibrary};
-use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferInheritanceInfo, CommandBufferInheritanceRenderPassType, CommandBufferInheritanceRenderingInfo, CommandBufferUsage, PrimaryAutoCommandBuffer, PrimaryCommandBufferAbstract, SecondaryAutoCommandBuffer};
+use vulkano::swapchain::{acquire_next_image, Surface, Swapchain, SwapchainAcquireFuture, SwapchainPresentInfo};
+use vulkano::{Validated, ValidationError, Version, VulkanError, VulkanLibrary};
+use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferInheritanceInfo, CommandBufferInheritanceRenderPassType, CommandBufferInheritanceRenderingInfo, CommandBufferUsage, PrimaryAutoCommandBuffer, PrimaryCommandBufferAbstract, RenderingAttachmentInfo, RenderingInfo, SecondaryAutoCommandBuffer, SubpassContents};
 use vulkano::format::Format;
-use vulkano::image::Image;
+use vulkano::image::{Image, ImageCreateInfo, ImageType, ImageUsage};
+use vulkano::image::view::ImageView;
+use vulkano::pipeline::graphics::rasterization::CullMode;
+use vulkano::pipeline::graphics::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
+use vulkano::render_pass::{AttachmentLoadOp, AttachmentStoreOp};
 use vulkano::sync::GpuFuture;
 pub use bitmap::*;
 pub use geometry::*;
@@ -38,9 +43,11 @@ pub use sky::*;
 pub use material::*;
 pub use player_viewport::*;
 use crate::error::{Error, MResult};
-use crate::renderer::Resolution;
+use crate::renderer::{Renderer, Resolution};
+use crate::renderer::data::BSP;
 use crate::renderer::vulkan::helper::{build_swapchain, LoadedVulkan};
 use crate::renderer::vulkan::solid_color::SolidColorShader;
+use crate::renderer::vulkan::vertex::VulkanModelData;
 
 pub struct VulkanRenderer {
     current_resolution: Resolution,
@@ -48,14 +55,15 @@ pub struct VulkanRenderer {
     device: Arc<Device>,
     memory_allocator: Arc<StandardMemoryAllocator>,
     command_buffer_allocator: StandardCommandBufferAllocator,
-    descriptor_set_allocator: StandardDescriptorSetAllocator,
+    descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
     queue: Arc<Queue>,
     future: Option<Box<dyn GpuFuture>>,
     pipelines: BTreeMap<VulkanPipelineType, Arc<dyn VulkanPipelineData>>,
     output_format: Format,
     swapchain: Arc<Swapchain>,
     surface: Arc<Surface>,
-    swapchain_images: Vec<Arc<Image>>
+    swapchain_images: Vec<Arc<Image>>,
+    swapchain_image_views: Vec<(Arc<ImageView>, Arc<ImageView>)>,
 }
 
 impl VulkanRenderer {
@@ -75,13 +83,13 @@ impl VulkanRenderer {
             }
         );
 
-        let descriptor_set_allocator = StandardDescriptorSetAllocator::new(
+        let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
             device.clone(),
             StandardDescriptorSetAllocatorCreateInfo {
                 set_count: 16 * 1024,
                 ..Default::default()
             }
-        );
+        ));
 
         let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
         let future = Some(vulkano::sync::now(device.clone()).boxed());
@@ -94,14 +102,31 @@ impl VulkanRenderer {
 
         let (swapchain, swapchain_images) = build_swapchain(device.clone(), surface.clone(), output_format, resolution)?;
 
-        let pipelines = load_all_pipelines(device.clone())?;
+        let pipelines = load_all_pipelines(device.clone(), output_format)?;
+
+        let swapchain_image_views = swapchain_images.iter().map(|v| {
+            let color = ImageView::new_default(v.clone()).unwrap();
+            let depth = ImageView::new_default(
+                Image::new(
+                    memory_allocator.clone(),
+                    ImageCreateInfo {
+                        image_type: ImageType::Dim2d,
+                        format: Format::D16_UNORM,
+                        extent: color.image().extent(),
+                        usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT | ImageUsage::TRANSIENT_ATTACHMENT,
+                        ..Default::default()
+                    },
+                    AllocationCreateInfo::default(),
+                ).unwrap(),
+            ).unwrap();
+            (color, depth)
+        }).collect();
 
         Ok(Self {
             current_resolution: renderer_parameters.resolution,
             instance,
             command_buffer_allocator,
             descriptor_set_allocator,
-            memory_allocator,
             device,
             queue,
             future,
@@ -109,8 +134,155 @@ impl VulkanRenderer {
             output_format,
             swapchain,
             surface,
+            swapchain_image_views,
+            memory_allocator,
             swapchain_images
         })
+    }
+
+    pub fn draw_frame(renderer: &mut Renderer) -> MResult<()> {
+        let vulkan_renderer = &mut renderer.renderer;
+
+        let (image_index, suboptimal, acquire_future) =
+            match acquire_next_image(vulkan_renderer.swapchain.clone(), None).map_err(Validated::unwrap) {
+                Ok(r) => r,
+                Err(VulkanError::OutOfDate) => return Err(Error::from_vulkan_error(VulkanError::OutOfDate.to_string())),
+                Err(e) => panic!("failed to acquire next image: {e}"),
+            };
+
+        Self::draw_frame_infallible(renderer, image_index, acquire_future);
+
+        Ok(())
+    }
+
+    fn draw_frame_infallible(renderer: &mut Renderer, image_index: u32, image_future: SwapchainAcquireFuture) {
+        let default_bsp = BSP::default();
+        let currently_loaded_bsp = renderer
+            .current_bsp
+            .as_ref()
+            .and_then(|f| renderer.bsps.get(f))
+            .unwrap_or(&default_bsp);
+
+        let mut command_builder = AutoCommandBufferBuilder::primary(
+            &renderer.renderer.command_buffer_allocator,
+            renderer.renderer.queue.queue_family_index(),
+            CommandBufferUsage::OneTimeSubmit
+        ).expect("failed to init command builder");
+
+        let (color_view, depth_view) = renderer.renderer.swapchain_image_views[image_index as usize].clone();
+
+        command_builder.begin_rendering(RenderingInfo {
+            color_attachments: vec![Some(RenderingAttachmentInfo {
+                load_op: AttachmentLoadOp::Clear,
+                store_op: AttachmentStoreOp::Store,
+                clear_value: Some([0.5, 0.5, 0.5, 1.0].into()),
+                ..RenderingAttachmentInfo::image_view(color_view)
+            })],
+            depth_attachment: Some(RenderingAttachmentInfo {
+                load_op: AttachmentLoadOp::Clear,
+                store_op: AttachmentStoreOp::Store,
+                clear_value: Some([1.0].into()),
+                ..RenderingAttachmentInfo::image_view(depth_view)
+            }),
+            ..Default::default()
+        }).expect("failed to begin rendering");
+
+        let (width, height) = (renderer.renderer.current_resolution.width as f32, renderer.renderer.current_resolution.height as f32);
+
+        let viewport = Viewport {
+            offset: [0.0, 0.0],
+            extent: [width, height],
+            depth_range: 0.0..=1.0,
+        };
+
+        command_builder.set_viewport(0, [viewport].into_iter().collect());
+
+        let proj = glam::Mat4::perspective_lh(
+            70.0f32.to_radians(),
+            width / height,
+            0.05,
+            1000.0
+        );
+
+        let view = glam::Mat4::look_to_lh(
+            glam::Vec3::new(98.4934, -157.639, 2.70473),
+            glam::Vec3::new(0.0, 1.0, 0.0),
+            glam::Vec3::new(0.0, 0.0, -1.0)
+        );
+
+        for geometry in &currently_loaded_bsp.geometries {
+            let model = glam::Mat4::IDENTITY;
+
+            let model_data = VulkanModelData {
+                world: model.to_cols_array_2d(),
+                view: view.to_cols_array_2d(),
+                proj: proj.to_cols_array_2d(),
+                offset: [0.0, 0.0, 0.0],
+                rotation: glam::Mat3::IDENTITY.to_cols_array_2d()
+            };
+
+            let shader = renderer.shaders.get(&geometry.vulkan.shader).expect("no shader?");
+            let vulkan_shader = &shader.vulkan;
+            let stages = vulkan_shader.pipeline_data.get_stages();
+
+            command_builder.bind_index_buffer(geometry.vulkan.index_buffer.clone()).expect("can't bind indices");
+            let mut currently_bound_thing = None;
+
+            for (index, stage) in stages.iter().enumerate() {
+                let tcoords_type = Some(vulkan_shader.pipeline_data.get_texture_coords_type(renderer, index));
+                if tcoords_type != currently_bound_thing {
+                    command_builder.bind_vertex_buffers(0, (
+                        geometry.vulkan.vertex_buffer.clone(),
+                        match tcoords_type.unwrap() {
+                            VulkanMaterialTextureCoordsType::Model => {
+                                geometry.vulkan.texture_coords_buffer.clone()
+                            },
+                            VulkanMaterialTextureCoordsType::Lightmaps => {
+                                if geometry.vulkan.lightmap_texture_coords_buffer.is_none() {
+                                    continue
+                                }
+                                geometry.vulkan.lightmap_texture_coords_buffer.clone().unwrap()
+                            }
+                        }
+                    ));
+                }
+
+                command_builder.set_cull_mode(CullMode::Back).unwrap();
+
+                vulkan_shader
+                    .pipeline_data
+                    .generate_stage_commands(renderer, index, &model_data, &mut command_builder)
+                    .expect("can't generate stage commands");
+
+                command_builder
+                    .draw_indexed(geometry.vulkan.index_buffer.len() as u32, 1, 0, 0, 0)
+                    .expect("can't draw");
+            }
+        }
+
+        command_builder.end_rendering().expect("failed to end rendering");
+
+        let commands = command_builder.build().expect("failed to build command builder");
+
+        let mut future = renderer.renderer
+            .future
+            .take()
+            .expect("there's no future :(");
+
+        future.cleanup_finished();
+
+        let swapchain_present = SwapchainPresentInfo::swapchain_image_index(renderer.renderer.swapchain.clone(), image_index);
+
+        let future = future
+            .join(image_future)
+            .then_execute(renderer.renderer.queue.clone(), commands)
+            .expect("can't execute commands")
+            .then_swapchain_present(renderer.renderer.queue.clone(), swapchain_present)
+            .then_signal_fence_and_flush()
+            .expect("can't signal fence/flush");
+        let geo_end = Instant::now();
+
+        renderer.renderer.future = Some(future.boxed());
     }
 
     fn execute_command_list(&mut self, command_buffer: Arc<impl PrimaryCommandBufferAbstract + 'static>) {
@@ -120,6 +292,7 @@ impl VulkanRenderer {
             .then_execute(self.queue.clone(), command_buffer)
             .expect("failed to execute the command list")
             .boxed();
+
         self.future = Some(future)
     }
 

@@ -26,3 +26,14 @@ pub struct VulkanModelVertexTextureCoords {
     #[format(R32G32_SFLOAT)]
     pub texture_coords: [f32; 2],
 }
+
+#[derive(Copy, Clone, Debug)]
+#[repr(C)]
+#[derive(BufferContents)]
+pub struct VulkanModelData {
+    pub world: [[f32; 4]; 4],
+    pub view: [[f32; 4]; 4],
+    pub proj: [[f32; 4]; 4],
+    pub offset: [f32; 3],
+    pub rotation: [[f32; 3]; 3],
+}

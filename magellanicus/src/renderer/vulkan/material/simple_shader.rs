@@ -1,16 +1,21 @@
 use std::sync::Arc;
 use std::borrow::ToOwned;
 use std::vec;
+use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage};
 use vulkano::command_buffer::allocator::CommandBufferAllocator;
-use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferInheritanceInfo, CommandBufferInheritanceRenderPassType, CommandBufferInheritanceRenderingInfo, CommandBufferUsage, SecondaryAutoCommandBuffer};
+use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferInheritanceInfo, CommandBufferInheritanceRenderPassType, CommandBufferInheritanceRenderingInfo, CommandBufferUsage, PrimaryAutoCommandBuffer, SecondaryAutoCommandBuffer};
+use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::format::Format;
 use vulkano::image::Image;
 use vulkano::image::sampler::{Sampler, SamplerCreateInfo};
 use vulkano::image::view::{ImageView, ImageViewCreateInfo};
-use vulkano::pipeline::GraphicsPipeline;
+use vulkano::padded::Padded;
+use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
 use crate::error::{Error, MResult};
 use crate::renderer::{AddShaderBasicShaderData, Renderer};
-use crate::renderer::vulkan::{VulkanMaterial, VulkanMaterialShaderData, VulkanMaterialShaderStage, VulkanMaterialTextureCoordsType, VulkanPipelineData, VulkanPipelineType, VulkanRenderer};
+use crate::renderer::vulkan::{default_allocation_create_info, VulkanMaterial, VulkanMaterialShaderData, VulkanMaterialShaderStage, VulkanMaterialTextureCoordsType, VulkanPipelineData, VulkanPipelineType, VulkanRenderer};
+use crate::renderer::vulkan::solid_color::ModelData;
+use crate::renderer::vulkan::vertex::{VulkanModelData, VulkanModelVertex};
 
 pub struct VulkanSimpleShaderMaterial {
     diffuse: Arc<ImageView>,
@@ -47,15 +52,42 @@ impl VulkanMaterial for VulkanSimpleShaderMaterial {
         &[VulkanMaterialShaderStage::Diffuse]
     }
 
-    fn generate_stage_commands(&self, renderer: &Renderer, stage: usize) -> MResult<Arc<SecondaryAutoCommandBuffer>> {
-        assert_eq!(1, stage);
-        let mut builder = renderer.renderer.generate_secondary_buffer_builder()?;
-        builder.bind_pipeline_graphics(renderer.renderer.pipelines[&VulkanPipelineType::SolidColor].get_pipeline())?;
-        Ok(builder.build()?)
+    fn generate_stage_commands(&self, renderer: &Renderer, stage: usize, vulkan_model_data: &VulkanModelData, to: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>) -> MResult<()> {
+        assert_eq!(0, stage);
+        let pipeline = renderer.renderer.pipelines[&VulkanPipelineType::SolidColor].get_pipeline();
+
+        let uniform_buffer = Buffer::from_data(
+            renderer.renderer.memory_allocator.clone(),
+            BufferCreateInfo { usage: BufferUsage::UNIFORM_BUFFER, ..Default::default() },
+            default_allocation_create_info(),
+            ModelData {
+                world: vulkan_model_data.world,
+                proj: vulkan_model_data.proj,
+                view: vulkan_model_data.view,
+                offset: Padded::from(vulkan_model_data.offset).into(),
+                rotation: [Padded::from(vulkan_model_data.rotation[0]).into(), Padded::from(vulkan_model_data.rotation[1]).into(), Padded::from(vulkan_model_data.rotation[2]).into()],
+            }
+        )?;
+
+        let set = PersistentDescriptorSet::new(
+            renderer.renderer.descriptor_set_allocator.as_ref(),
+            pipeline.layout().set_layouts()[0].clone(),
+            [WriteDescriptorSet::buffer(0, uniform_buffer)],
+            []
+        )?;
+
+        to.bind_descriptor_sets(
+            PipelineBindPoint::Graphics,
+            pipeline.layout().clone(),
+            0,
+            set
+        );
+        to.bind_pipeline_graphics(pipeline.clone())?;
+        Ok(())
     }
 
     fn get_texture_coords_type(&self, renderer: &Renderer, stage: usize) -> VulkanMaterialTextureCoordsType {
-        assert_eq!(1, stage);
+        assert_eq!(0, stage);
         VulkanMaterialTextureCoordsType::Model
     }
 }

@@ -23,7 +23,8 @@ impl BSP {
         let vulkan = VulkanBSPData::new(renderer, &add_bsp_parameter)?;
         for (material, lightmap_index) in add_bsp_iterator {
             geometries.push(BSPGeometry {
-                vulkan: VulkanBSPGeometryData::new(renderer, &add_bsp_parameter, material, lightmap_index)?
+                vulkan: VulkanBSPGeometryData::new(renderer, &add_bsp_parameter, material, lightmap_index)?,
+                lightmap_index: material.lightmap_vertices.as_ref().and(lightmap_index),
             })
         }
 
@@ -32,5 +33,6 @@ impl BSP {
 }
 
 pub struct BSPGeometry {
-    pub vulkan: VulkanBSPGeometryData
+    pub vulkan: VulkanBSPGeometryData,
+    pub lightmap_index: Option<usize>
 }

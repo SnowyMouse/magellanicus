@@ -4,8 +4,9 @@ use crate::renderer::{AddBSPParameter, AddBSPParameterLightmapMaterial, Renderer
 use std::boxed::Box;
 use std::collections::BTreeMap;
 use std::sync::Arc;
+use std::string::String;
 use std::vec::Vec;
-use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer};
+use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage, IndexBuffer, Subbuffer};
 use vulkano::image::sampler::{Sampler, SamplerCreateInfo};
 use vulkano::image::view::{ImageView, ImageViewCreateInfo};
 use crate::renderer::vulkan::default_allocation_create_info;
@@ -54,7 +55,9 @@ impl VulkanBSPData {
 pub struct VulkanBSPGeometryData {
     pub vertex_buffer: Subbuffer<[VulkanModelVertex]>,
     pub texture_coords_buffer: Subbuffer<[VulkanModelVertexTextureCoords]>,
-    pub lightmap_texture_coords_buffer: Option<Subbuffer<[VulkanModelVertexTextureCoords]>>
+    pub lightmap_texture_coords_buffer: Option<Subbuffer<[VulkanModelVertexTextureCoords]>>,
+    pub index_buffer: Subbuffer<[u16]>,
+    pub shader: Arc<String>
 }
 
 impl VulkanBSPGeometryData {
@@ -72,6 +75,8 @@ impl VulkanBSPGeometryData {
                 }
             })
         )?;
+
+        let (shader, ..) = renderer.shaders.get_key_value(&material.shader).expect("shader?????");
 
         let texture_coords_buffer = Buffer::from_iter(
             renderer.renderer.memory_allocator.clone(),
@@ -103,6 +108,21 @@ impl VulkanBSPGeometryData {
             None
         };
 
-        Ok(VulkanBSPGeometryData { vertex_buffer, texture_coords_buffer, lightmap_texture_coords_buffer })
+        let index_iter: Vec<u16> = material
+            .indices
+            .iter()
+            .map(|t| t.indices.iter())
+            .flatten()
+            .copied()
+            .collect();
+
+        let index_buffer = Buffer::from_iter(
+            renderer.renderer.memory_allocator.clone(),
+            BufferCreateInfo { usage: BufferUsage::INDEX_BUFFER, ..Default::default() },
+            default_allocation_create_info(),
+            index_iter
+        )?;
+
+        Ok(VulkanBSPGeometryData { vertex_buffer, texture_coords_buffer, lightmap_texture_coords_buffer, shader: shader.clone(), index_buffer })
     }
 }
