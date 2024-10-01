@@ -46,7 +46,6 @@ use crate::error::{Error, MResult};
 use crate::renderer::{Renderer, Resolution};
 use crate::renderer::data::BSP;
 use crate::renderer::vulkan::helper::{build_swapchain, LoadedVulkan};
-use crate::renderer::vulkan::solid_color::SolidColorShader;
 use crate::renderer::vulkan::vertex::VulkanModelData;
 
 pub struct VulkanRenderer {
@@ -286,11 +285,12 @@ impl VulkanRenderer {
     }
 
     fn execute_command_list(&mut self, command_buffer: Arc<impl PrimaryCommandBufferAbstract + 'static>) {
+        let execution = command_buffer.execute(self.queue.clone()).unwrap();
+
         let future = self.future
             .take()
             .expect("no future?")
-            .then_execute(self.queue.clone(), command_buffer)
-            .expect("failed to execute the command list")
+            .join(execution)
             .boxed();
 
         self.future = Some(future)

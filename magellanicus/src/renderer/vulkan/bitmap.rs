@@ -1,6 +1,6 @@
 use std::println;
 use vulkano::image::{Image, ImageCreateInfo, ImageTiling, ImageType, ImageUsage, SampleCount};
-use vulkano::memory::allocator::AllocationCreateInfo;
+use vulkano::memory::allocator::{AllocationCreateInfo, MemoryAllocatePreference, MemoryTypeFilter};
 use crate::error::{Error, MResult};
 use crate::renderer::{AddBitmapBitmapParameter, BitmapFormat, BitmapType, Renderer};
 use crate::renderer::vulkan::{default_allocation_create_info, VulkanRenderer};
@@ -113,7 +113,11 @@ impl VulkanBitmapData {
                 usage: ImageUsage::TRANSFER_DST | ImageUsage::SAMPLED,
                 ..Default::default()
             },
-            AllocationCreateInfo::default()
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
+                allocate_preference: MemoryAllocatePreference::AlwaysAllocate,
+                ..Default::default()
+            },
         )?;
 
         let upload_buffer = Buffer::new_slice(

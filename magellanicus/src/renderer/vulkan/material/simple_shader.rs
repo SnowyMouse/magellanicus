@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use std::borrow::ToOwned;
-use std::vec;
+use std::{println, vec};
 use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage};
 use vulkano::command_buffer::allocator::CommandBufferAllocator;
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferInheritanceInfo, CommandBufferInheritanceRenderPassType, CommandBufferInheritanceRenderingInfo, CommandBufferUsage, PrimaryAutoCommandBuffer, SecondaryAutoCommandBuffer};
@@ -14,7 +14,7 @@ use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
 use crate::error::{Error, MResult};
 use crate::renderer::{AddShaderBasicShaderData, Renderer};
 use crate::renderer::vulkan::{default_allocation_create_info, VulkanMaterial, VulkanMaterialShaderData, VulkanMaterialShaderStage, VulkanMaterialTextureCoordsType, VulkanPipelineData, VulkanPipelineType, VulkanRenderer};
-use crate::renderer::vulkan::solid_color::ModelData;
+use crate::renderer::vulkan::simple_texture::ModelData;
 use crate::renderer::vulkan::vertex::{VulkanModelData, VulkanModelVertex};
 
 pub struct VulkanSimpleShaderMaterial {
@@ -33,10 +33,7 @@ impl VulkanSimpleShaderMaterial {
             .image
             .clone();
 
-        let diffuse = ImageView::new(
-            diffuse.clone(),
-            ImageViewCreateInfo::from_image(diffuse.as_ref())
-        )?;
+        let diffuse = ImageView::new_default(diffuse.clone())?;
 
         let diffuse_sampler = Sampler::new(
             renderer.renderer.device.clone(),
@@ -54,7 +51,7 @@ impl VulkanMaterial for VulkanSimpleShaderMaterial {
 
     fn generate_stage_commands(&self, renderer: &Renderer, stage: usize, vulkan_model_data: &VulkanModelData, to: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>) -> MResult<()> {
         assert_eq!(0, stage);
-        let pipeline = renderer.renderer.pipelines[&VulkanPipelineType::SolidColor].get_pipeline();
+        let pipeline = renderer.renderer.pipelines[&VulkanPipelineType::SimpleTexture].get_pipeline();
 
         let uniform_buffer = Buffer::from_data(
             renderer.renderer.memory_allocator.clone(),
@@ -72,7 +69,11 @@ impl VulkanMaterial for VulkanSimpleShaderMaterial {
         let set = PersistentDescriptorSet::new(
             renderer.renderer.descriptor_set_allocator.as_ref(),
             pipeline.layout().set_layouts()[0].clone(),
-            [WriteDescriptorSet::buffer(0, uniform_buffer)],
+            [
+                WriteDescriptorSet::buffer(0, uniform_buffer),
+                WriteDescriptorSet::sampler(1, self.diffuse_sampler.clone()),
+                WriteDescriptorSet::image_view(2, self.diffuse.clone()),
+            ],
             []
         )?;
 
@@ -82,6 +83,7 @@ impl VulkanMaterial for VulkanSimpleShaderMaterial {
             0,
             set
         );
+
         to.bind_pipeline_graphics(pipeline.clone())?;
         Ok(())
     }

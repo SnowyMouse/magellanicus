@@ -1,6 +1,6 @@
 use vulkano::device::Device;
 use vulkano::pipeline::graphics::vertex_input::{Vertex, VertexBufferDescription, VertexDefinition};
-use vulkano::pipeline::{DynamicState, GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo};
+use vulkano::pipeline::{DynamicState, GraphicsPipeline, Pipeline, PipelineLayout, PipelineShaderStageCreateInfo};
 use std::sync::Arc;
 use std::{println, vec};
 use std::vec::Vec;
@@ -68,7 +68,10 @@ pub fn load_pipeline(
         .entry_point("main")
         .expect("Missing main() entry point for fragment pipeline!");
 
-    let vertex_input_state = settings.vertex_buffer_descriptions.definition(&vertex_shader.info().input_interface)?;
+    let vertex_input_state = settings
+        .vertex_buffer_descriptions
+        .definition(&vertex_shader.info().input_interface)?;
+
     let stages = [
         PipelineShaderStageCreateInfo::new(vertex_shader),
         PipelineShaderStageCreateInfo::new(fragment_shader),
