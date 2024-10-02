@@ -236,7 +236,6 @@ impl ApplicationHandler for FlycamTestHandler {
                     Ok(n) => {
                         if !n {
                             let window = self.window.clone().unwrap();
-                            eprintln!("Outdated swapchain; fixing up");
                             if let Err(e) = renderer.rebuild_swapchain(
                                 RendererParameters {
                                     resolution: Resolution {

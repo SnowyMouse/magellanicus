@@ -135,9 +135,7 @@ impl VulkanRenderer {
                 Err(e) => panic!("failed to acquire next image: {e}"),
             };
 
-        Self::draw_frame_infallible(renderer, image_index, acquire_future);
-
-        Ok(!suboptimal)
+        Ok(Self::draw_frame_infallible(renderer, image_index, acquire_future) && !suboptimal)
     }
 
     pub fn rebuild_swapchain(&mut self, renderer_parameters: &RendererParameters) -> MResult<()> {
@@ -156,7 +154,7 @@ impl VulkanRenderer {
         Ok(())
     }
 
-    fn draw_frame_infallible(renderer: &mut Renderer, image_index: u32, image_future: SwapchainAcquireFuture) {
+    fn draw_frame_infallible(renderer: &mut Renderer, image_index: u32, image_future: SwapchainAcquireFuture) -> bool {
         let default_bsp = BSP::default();
         let currently_loaded_bsp = renderer
             .current_bsp
@@ -287,16 +285,24 @@ impl VulkanRenderer {
 
         let swapchain_present = SwapchainPresentInfo::swapchain_image_index(renderer.renderer.swapchain.clone(), image_index);
 
-        let future = future
+        match future
             .join(image_future)
             .then_execute(renderer.renderer.queue.clone(), commands)
             .expect("can't execute commands")
             .then_swapchain_present(renderer.renderer.queue.clone(), swapchain_present)
-            .then_signal_fence_and_flush()
-            .expect("can't signal fence/flush");
-        let geo_end = Instant::now();
-
-        renderer.renderer.future = Some(future.boxed());
+            .then_signal_fence_and_flush() {
+            Ok(n) => {
+                renderer.renderer.future = Some(n.boxed());
+                true
+            }
+            Err(Validated::Error(VulkanError::OutOfDate)) => {
+                renderer.renderer.future = Some(vulkano::sync::now(renderer.renderer.device.clone()).boxed());
+                false
+            }
+            Err(e) => {
+                panic!("Oh, shit! Some bullshit just happened: {e}")
+            }
+        }
     }
 
     fn execute_command_list(&mut self, command_buffer: Arc<impl PrimaryCommandBufferAbstract + 'static>) {
