@@ -54,7 +54,12 @@ struct ScenarioData {
 }
 
 fn main() -> Result<(), String> {
-    let Arguments { tags, scenario, engine, viewports } = Arguments::parse();
+    let Arguments { tags, scenario, engine, mut viewports } = Arguments::parse();
+
+    if !(1..=4).contains(&viewports) {
+        eprintln!("--viewports ({viewports}) must be between 1-4; clamping");
+        viewports = viewports.clamp(1, 4);
+    }
 
     let first_tags_dir: &Path = tags.get(0).unwrap().as_ref();
 
