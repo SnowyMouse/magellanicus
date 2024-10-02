@@ -39,12 +39,14 @@ pub struct Renderer {
 impl Renderer {
     /// Initialize a new renderer.
     ///
-    /// If rendering to a window is desired, set `surface` to true.
-    ///
     /// Errors if:
     /// - `parameters` is invalid
     /// - the renderer backend could not be initialized for some reason
     pub fn new(parameters: RendererParameters, surface: Arc<impl HasRawWindowHandle + HasRawDisplayHandle + Send + Sync + 'static>) -> MResult<Self> {
+        if parameters.resolution.height == 0 || parameters.resolution.width == 0 {
+            return Err(Error::DataError { error: "resolution has 0 on one or more dimensions".to_owned() })
+        }
+
         let mut player_viewports = vec![PlayerViewport::default(); parameters.number_of_viewports];
 
         match parameters.number_of_viewports {
@@ -305,9 +307,12 @@ impl Renderer {
     /// Rebuild the swapchain.
     ///
     /// You must use this when the window is resized or if the swapchain is invalidated.
-    pub fn rebuild_swapchain(&mut self, new_parameters: RendererParameters) -> MResult<()> {
+    pub fn rebuild_swapchain(&mut self, parameters: RendererParameters) -> MResult<()> {
+        if parameters.resolution.height == 0 || parameters.resolution.width == 0 {
+            return Err(Error::DataError { error: "resolution has 0 on one or more dimensions".to_owned() })
+        }
         self.renderer.rebuild_swapchain(
-            &new_parameters
+            &parameters
         )
     }
 

@@ -19,6 +19,7 @@ pub struct RendererParameters {
     /// Default = 640x480
     pub resolution: Resolution,
 
+    // TODO: Separate number_of_viewports from this?
     /// Number of viewports (must be 1-4)
     ///
     /// Default = 1

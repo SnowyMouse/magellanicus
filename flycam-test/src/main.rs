@@ -189,6 +189,7 @@ impl ApplicationHandler for FlycamTestHandler {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         let mut attributes = Window::default_attributes();
         attributes.inner_size = Some(Size::Physical(PhysicalSize::new(1280, 960)));
+        attributes.min_inner_size = Some(Size::Physical(PhysicalSize::new(64, 64)));
         attributes.title = format!("Magellanicus - {path}", path = self.scenario_data.scenario_path);
 
         let window = Arc::new(event_loop.create_window(attributes).unwrap());
