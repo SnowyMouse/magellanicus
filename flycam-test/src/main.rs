@@ -37,7 +37,13 @@ struct Arguments {
     /// Engine to use.
     ///
     /// Ignored/not needed when loading cache files, as this is derived from the map.
-    pub engine: Option<String>
+    pub engine: Option<String>,
+
+    /// Number of viewports to use.
+    ///
+    /// Must be between 1 and 4.
+    #[arg(long = "viewports", short = 'v', default_value = "1")]
+    pub viewports: usize
 }
 
 struct ScenarioData {
@@ -48,7 +54,7 @@ struct ScenarioData {
 }
 
 fn main() -> Result<(), String> {
-    let Arguments { tags, scenario, engine } = Arguments::parse();
+    let Arguments { tags, scenario, engine, viewports } = Arguments::parse();
 
     let first_tags_dir: &Path = tags.get(0).unwrap().as_ref();
 
@@ -94,6 +100,7 @@ fn main() -> Result<(), String> {
         scenario_data,
         frame_time_counts: Vec::with_capacity(300),
         last_frame: Instant::now(),
+        viewports,
         camera_speed_multiplier: 1.0,
         camera_velocity: [0.0, 0.0, 0.0]
     };
@@ -166,6 +173,7 @@ pub struct FlycamTestHandler {
     window: Option<Arc<Window>>,
     scenario_data: ScenarioData,
     frame_time_counts: Vec<Duration>,
+    viewports: usize,
 
     camera_velocity: [f64; 3],
     camera_speed_multiplier: f64,
@@ -184,7 +192,7 @@ impl ApplicationHandler for FlycamTestHandler {
         let PhysicalSize { width, height } = window.inner_size();
         let renderer = Renderer::new(RendererParameters {
             resolution: Resolution { width, height },
-            number_of_viewports: 4,
+            number_of_viewports: self.viewports,
             vsync: false
         }, window.clone());
 
