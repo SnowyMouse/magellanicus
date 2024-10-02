@@ -81,7 +81,7 @@ impl VulkanRenderer {
             device.clone(),
             StandardCommandBufferAllocatorCreateInfo {
                 primary_buffer_count: 32,
-                secondary_buffer_count: 16 * 1024,
+                secondary_buffer_count: 0,
                 ..Default::default()
             }
         );
