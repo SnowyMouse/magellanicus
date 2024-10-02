@@ -444,8 +444,20 @@ impl FlycamTestHandler {
                             }
                         }
                     } else {
+                        let mut first_bitmap_index = s.first_bitmap_index
+                            .map(|o| o as usize);
+
+                        if first_bitmap_index.is_none() {
+                            if s.bitmap_count > 0 {
+                                return Err(format!("Sequence {sequence_index} of bitmap {path} has a null bitmap index"))
+                            }
+                            else {
+                                first_bitmap_index = Some(0)
+                            }
+                        }
+
                         AddBitmapSequenceParameter::Bitmap {
-                            first: s.first_bitmap_index.map(|o| o as usize).ok_or_else(|| format!("Sequence {sequence_index} of bitmap {path} has a null bitmap index"))?,
+                            first: first_bitmap_index.unwrap(),
                             count: s.bitmap_count as usize
                         }
                     };
