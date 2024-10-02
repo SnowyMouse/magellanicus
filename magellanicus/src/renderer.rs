@@ -13,6 +13,9 @@ use crate::renderer::vulkan::VulkanRenderer;
 use player_viewport::*;
 use crate::error::{Error, MResult};
 
+pub use player_viewport::Camera;
+pub use glam::Vec3;
+
 mod parameters;
 mod vulkan;
 mod data;
@@ -29,7 +32,6 @@ pub struct Renderer {
     bsps: BTreeMap<Arc<String>, BSP>,
 
     default_bitmaps: Option<DefaultBitmaps>,
-
     current_bsp: Option<Arc<String>>
 }
 
@@ -42,13 +44,65 @@ impl Renderer {
     /// - `parameters` is invalid
     /// - the renderer backend could not be initialized for some reason
     pub fn new(parameters: RendererParameters, surface: Arc<impl HasRawWindowHandle + HasRawDisplayHandle + Send + Sync + 'static>) -> MResult<Self> {
-        if !(1..=4).contains(&parameters.number_of_viewports) {
-            return Err(Error::DataError { error: format!("number of viewports was set to {}, but only 1-4 are supported", parameters.number_of_viewports) })
+        let mut player_viewports = vec![PlayerViewport::default(); parameters.number_of_viewports];
+
+        match parameters.number_of_viewports {
+            1 => {
+                player_viewports[0].rel_x = 0.0;
+                player_viewports[0].rel_y = 0.0;
+                player_viewports[0].rel_width = 1.0;
+                player_viewports[0].rel_height = 1.0;
+            }
+            2 => {
+                player_viewports[0].rel_x = 0.0;
+                player_viewports[0].rel_y = 0.0;
+                player_viewports[0].rel_width = 1.0;
+                player_viewports[0].rel_height = 0.5;
+
+                player_viewports[1].rel_x = 0.0;
+                player_viewports[1].rel_y = 0.5;
+                player_viewports[1].rel_width = 1.0;
+                player_viewports[1].rel_height = 0.5;
+            }
+            3 => {
+                player_viewports[0].rel_x = 0.0;
+                player_viewports[0].rel_y = 0.0;
+                player_viewports[0].rel_width = 1.0;
+                player_viewports[0].rel_height = 0.5;
+
+                player_viewports[1].rel_x = 0.0;
+                player_viewports[1].rel_y = 0.5;
+                player_viewports[1].rel_width = 0.5;
+                player_viewports[1].rel_height = 0.5;
+
+                player_viewports[2].rel_x = 0.5;
+                player_viewports[2].rel_y = 0.5;
+                player_viewports[2].rel_width = 0.5;
+                player_viewports[2].rel_height = 0.5;
+            }
+            4 => {
+                player_viewports[0].rel_x = 0.0;
+                player_viewports[0].rel_y = 0.0;
+                player_viewports[0].rel_width = 0.5;
+                player_viewports[0].rel_height = 0.5;
+
+                player_viewports[1].rel_x = 0.5;
+                player_viewports[1].rel_y = 0.0;
+                player_viewports[1].rel_width = 0.5;
+                player_viewports[1].rel_height = 0.5;
+
+                player_viewports[2].rel_x = 0.0;
+                player_viewports[2].rel_y = 0.5;
+                player_viewports[2].rel_width = 0.5;
+                player_viewports[2].rel_height = 0.5;
+
+                player_viewports[3].rel_x = 0.5;
+                player_viewports[3].rel_y = 0.5;
+                player_viewports[3].rel_width = 0.5;
+                player_viewports[3].rel_height = 0.5;
+            }
+            n => return Err(Error::DataError { error: format!("number of viewports was set to {n}, but only 1-4 are supported") })
         }
-
-        let player_viewports = Vec::with_capacity(parameters.number_of_viewports);
-
-        // TODO: add player viewports
 
         let mut result = Self {
             renderer: VulkanRenderer::new(&parameters, surface.clone(), parameters.resolution)?,
@@ -236,10 +290,44 @@ impl Renderer {
     }
 
     /// Rebuild the swapchain.
+    ///
+    /// You must use this when the window is resized or if the swapchain is invalidated.
     pub fn rebuild_swapchain(&mut self, new_parameters: RendererParameters) -> MResult<()> {
         self.renderer.rebuild_swapchain(
             &new_parameters
         )
+    }
+
+    /// Set the position, rotation, and FoV of the camera for the given viewport.
+    ///
+    /// `fov` must be in radians, and `position` must be a vector.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `viewport >= self.viewport_count()` or if `!(camera.fov > 0.0 && camera.fov < PI)`
+    pub fn set_camera_for_viewport(&mut self, viewport: usize, camera: Camera) {
+        assert!(camera.fov > 0.0 && camera.fov < core::f32::consts::PI, "camera.fov is not between 0 (exclusive) and pi (exclusive)");
+
+        let viewport = &mut self.player_viewports[viewport];
+        viewport.camera = Camera {
+            position: Vec3::from(camera.position),
+            rotation: Vec3::from(camera.rotation).try_normalize().unwrap_or(Vec3::new(0.0, 1.0, 0.0)),
+            fov: camera.fov
+        }
+    }
+
+    /// Get the camera data for the given viewport.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `viewport >= self.viewport_count()`
+    pub fn get_camera(&self, viewport: usize) -> Camera {
+        self.player_viewports[viewport].camera
+    }
+
+    /// Get the number of viewports.
+    pub fn get_viewport_count(&self) -> usize {
+        self.player_viewports.len()
     }
 
     /// Draw a frame.

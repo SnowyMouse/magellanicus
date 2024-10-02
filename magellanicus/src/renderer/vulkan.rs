@@ -201,74 +201,76 @@ impl VulkanRenderer {
 
         let (width, height) = (renderer.renderer.current_resolution.width as f32, renderer.renderer.current_resolution.height as f32);
 
-        let viewport = Viewport {
-            offset: [0.0, 0.0],
-            extent: [width, height],
-            depth_range: 0.0..=1.0,
-        };
-
-        command_builder.set_viewport(0, [viewport].into_iter().collect());
-
-        let proj = glam::Mat4::perspective_lh(
-            70.0f32.to_radians(),
-            width / height,
-            0.05,
-            1000.0
-        );
-
-        let view = glam::Mat4::look_to_lh(
-            glam::Vec3::new(98.4934, -157.639, 2.70473),
-            glam::Vec3::new(0.0, 1.0, -0.25).normalize(),
-            glam::Vec3::new(0.0, 0.0, -1.0)
-        );
-
-        for geometry in &currently_loaded_bsp.geometries {
-            let model = glam::Mat4::IDENTITY;
-
-            let model_data = VulkanModelData {
-                world: model.to_cols_array_2d(),
-                view: view.to_cols_array_2d(),
-                proj: proj.to_cols_array_2d(),
-                offset: [0.0, 0.0, 0.0],
-                rotation: glam::Mat3::IDENTITY.to_cols_array_2d()
+        for i in &renderer.player_viewports {
+            let viewport = Viewport {
+                offset: [i.rel_x * width, i.rel_y * height],
+                extent: [i.rel_width * width, i.rel_height * height],
+                depth_range: 0.0..=1.0,
             };
 
-            let shader = renderer.shaders.get(&geometry.vulkan.shader).expect("no shader?");
-            let vulkan_shader = &shader.vulkan;
-            let stages = vulkan_shader.pipeline_data.get_stages();
+            let proj = glam::Mat4::perspective_lh(
+                i.camera.fov,
+                viewport.extent[0] / viewport.extent[1],
+                0.05,
+                1000.0
+            );
 
-            command_builder.bind_index_buffer(geometry.vulkan.index_buffer.clone()).expect("can't bind indices");
-            let mut currently_bound_thing = None;
+            let view = glam::Mat4::look_to_lh(
+                i.camera.position,
+                i.camera.rotation,
+                glam::Vec3::new(0.0, 0.0, -1.0)
+            );
 
-            for (index, stage) in stages.iter().enumerate() {
-                let tcoords_type = Some(vulkan_shader.pipeline_data.get_texture_coords_type(renderer, index));
-                if tcoords_type != currently_bound_thing {
-                    command_builder.bind_vertex_buffers(0, (
-                        geometry.vulkan.vertex_buffer.clone(),
-                        match tcoords_type.unwrap() {
-                            VulkanMaterialTextureCoordsType::Model => {
-                                geometry.vulkan.texture_coords_buffer.clone()
-                            },
-                            VulkanMaterialTextureCoordsType::Lightmaps => {
-                                if geometry.vulkan.lightmap_texture_coords_buffer.is_none() {
-                                    continue
+            command_builder.set_viewport(0, [viewport].into_iter().collect());
+
+            for geometry in &currently_loaded_bsp.geometries {
+                let model = glam::Mat4::IDENTITY;
+
+                let model_data = VulkanModelData {
+                    world: model.to_cols_array_2d(),
+                    view: view.to_cols_array_2d(),
+                    proj: proj.to_cols_array_2d(),
+                    offset: [0.0, 0.0, 0.0],
+                    rotation: glam::Mat3::IDENTITY.to_cols_array_2d()
+                };
+
+                let shader = renderer.shaders.get(&geometry.vulkan.shader).expect("no shader?");
+                let vulkan_shader = &shader.vulkan;
+                let stages = vulkan_shader.pipeline_data.get_stages();
+
+                command_builder.bind_index_buffer(geometry.vulkan.index_buffer.clone()).expect("can't bind indices");
+                let mut currently_bound_thing = None;
+
+                for (index, stage) in stages.iter().enumerate() {
+                    let tcoords_type = Some(vulkan_shader.pipeline_data.get_texture_coords_type(renderer, index));
+                    if tcoords_type != currently_bound_thing {
+                        command_builder.bind_vertex_buffers(0, (
+                            geometry.vulkan.vertex_buffer.clone(),
+                            match tcoords_type.unwrap() {
+                                VulkanMaterialTextureCoordsType::Model => {
+                                    geometry.vulkan.texture_coords_buffer.clone()
+                                },
+                                VulkanMaterialTextureCoordsType::Lightmaps => {
+                                    if geometry.vulkan.lightmap_texture_coords_buffer.is_none() {
+                                        continue
+                                    }
+                                    geometry.vulkan.lightmap_texture_coords_buffer.clone().unwrap()
                                 }
-                                geometry.vulkan.lightmap_texture_coords_buffer.clone().unwrap()
                             }
-                        }
-                    ));
+                        ));
+                    }
+
+                    command_builder.set_cull_mode(CullMode::Back).unwrap();
+
+                    vulkan_shader
+                        .pipeline_data
+                        .generate_stage_commands(renderer, index, &model_data, &mut command_builder)
+                        .expect("can't generate stage commands");
+
+                    command_builder
+                        .draw_indexed(geometry.vulkan.index_buffer.len() as u32, 1, 0, 0, 0)
+                        .expect("can't draw");
                 }
-
-                command_builder.set_cull_mode(CullMode::Back).unwrap();
-
-                vulkan_shader
-                    .pipeline_data
-                    .generate_stage_commands(renderer, index, &model_data, &mut command_builder)
-                    .expect("can't generate stage commands");
-
-                command_builder
-                    .draw_indexed(geometry.vulkan.index_buffer.len() as u32, 1, 0, 0, 0)
-                    .expect("can't draw");
             }
         }
 

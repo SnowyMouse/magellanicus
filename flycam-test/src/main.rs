@@ -93,6 +93,9 @@ fn main() -> Result<(), String> {
         window: None,
         scenario_data,
         frame_time_counts: Vec::with_capacity(300),
+        last_frame: Instant::now(),
+        camera_speed_multiplier: 1.0,
+        camera_velocity: [0.0, 0.0, 0.0]
     };
     event_loop.set_control_flow(ControlFlow::Poll);
     event_loop.run_app(&mut handler).unwrap();
@@ -162,7 +165,11 @@ pub struct FlycamTestHandler {
     renderer: Option<Renderer>,
     window: Option<Arc<Window>>,
     scenario_data: ScenarioData,
-    frame_time_counts: Vec<Duration>
+    frame_time_counts: Vec<Duration>,
+
+    camera_velocity: [f64; 3],
+    camera_speed_multiplier: f64,
+    last_frame: Instant
 }
 
 impl ApplicationHandler for FlycamTestHandler {
@@ -177,7 +184,7 @@ impl ApplicationHandler for FlycamTestHandler {
         let PhysicalSize { width, height } = window.inner_size();
         let renderer = Renderer::new(RendererParameters {
             resolution: Resolution { width, height },
-            number_of_viewports: 1,
+            number_of_viewports: 4,
             vsync: false
         }, window.clone());
 
@@ -211,6 +218,26 @@ impl ApplicationHandler for FlycamTestHandler {
             }
         }
 
+        let renderer = self.renderer.as_mut().unwrap();
+
+        for (vi, location) in self.scenario_data
+            .scenario_tag
+            .player_starting_locations
+            .items
+            .iter()
+            .enumerate()
+            .take(renderer.get_viewport_count()) {
+            renderer.set_camera_for_viewport(vi, magellanicus::renderer::Camera {
+                fov: 70.0f32.to_radians(),
+                position: magellanicus::renderer::Vec3::new(location.position.x as f32, location.position.y as f32, location.position.z as f32 + 0.7),
+                rotation: {
+                    let x = location.facing.angle.cos();
+                    let y = location.facing.angle.sin();
+                    magellanicus::renderer::Vec3::new(x, y, 0.0)
+                },
+            });
+        }
+
         println!("--------------------------------------------------------------------------------");
         println!("  Loaded scenario {}...", self.scenario_data.scenario_path);
         println!("  Engine: {}", self.scenario_data.engine.display_name);
@@ -223,6 +250,12 @@ impl ApplicationHandler for FlycamTestHandler {
             WindowEvent::CloseRequested => {
                 event_loop.exit();
                 return;
+            },
+            WindowEvent::KeyboardInput {
+                event, ..
+            } => {
+                let is_pressed = event.state.is_pressed();
+
             }
             _ => ()
         }
@@ -232,6 +265,20 @@ impl ApplicationHandler for FlycamTestHandler {
         if cause == StartCause::Poll {
             if let Some(renderer) = self.renderer.as_mut() {
                 let time_start = Instant::now();
+
+                if self.camera_velocity != [0.0,0.0,0.0] {
+                    let time_since_last_frame = time_start - self.last_frame;
+                    let seconds = time_since_last_frame.as_micros() as f64 / 1000000.0;
+
+                    let delta_x = self.camera_velocity[0] * seconds * self.camera_speed_multiplier;
+                    let delta_y = self.camera_velocity[1] * seconds * self.camera_speed_multiplier;
+                    let delta_z = self.camera_velocity[2] * seconds * self.camera_speed_multiplier;
+
+
+                }
+
+
+                self.last_frame = time_start;
                 match renderer.draw_frame() {
                     Ok(n) => {
                         if !n {
