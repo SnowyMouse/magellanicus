@@ -45,7 +45,7 @@ pub trait VulkanMaterial: Send + Sync + 'static {
     /// # Panics
     ///
     /// Panics if `stage >= self.get_stages().len()`
-    fn generate_stage_commands(&self, renderer: &Renderer, stage: usize, model_data: &VulkanModelData, to: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>) -> MResult<()>;
+    fn generate_stage_commands(&self, renderer: &Renderer, stage: usize, to: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>) -> MResult<()>;
 
     /// Get the texture coords type that needs to be bound.
     ///

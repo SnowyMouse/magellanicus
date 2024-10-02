@@ -59,30 +59,18 @@ impl VulkanMaterial for VulkanSimpleShaderMaterial {
         &[VulkanMaterialShaderStage::Diffuse]
     }
 
-    fn generate_stage_commands(&self, renderer: &Renderer, stage: usize, vulkan_model_data: &VulkanModelData, to: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>) -> MResult<()> {
+    fn generate_stage_commands(&self, renderer: &Renderer, stage: usize, to: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>) -> MResult<()> {
         assert_eq!(0, stage);
-        let pipeline = renderer.renderer.pipelines[&VulkanPipelineType::SimpleTexture].get_pipeline();
+        to.bind_pipeline_graphics(renderer.renderer.pipelines[&VulkanPipelineType::SimpleTexture].get_pipeline()).unwrap();
 
-        let uniform_buffer = Buffer::from_data(
-            renderer.renderer.memory_allocator.clone(),
-            BufferCreateInfo { usage: BufferUsage::UNIFORM_BUFFER, ..Default::default() },
-            default_allocation_create_info(),
-            ModelData {
-                world: vulkan_model_data.world,
-                proj: vulkan_model_data.proj,
-                view: vulkan_model_data.view,
-                offset: Padded::from(vulkan_model_data.offset).into(),
-                rotation: [Padded::from(vulkan_model_data.rotation[0]).into(), Padded::from(vulkan_model_data.rotation[1]).into(), Padded::from(vulkan_model_data.rotation[2]).into()],
-            }
-        )?;
+        let pipeline = renderer.renderer.pipelines[&VulkanPipelineType::SimpleTexture].get_pipeline();
 
         let set = PersistentDescriptorSet::new(
             renderer.renderer.descriptor_set_allocator.as_ref(),
-            pipeline.layout().set_layouts()[0].clone(),
+            pipeline.layout().set_layouts()[1].clone(),
             [
-                WriteDescriptorSet::buffer(0, uniform_buffer),
-                WriteDescriptorSet::sampler(1, self.diffuse_sampler.clone()),
-                WriteDescriptorSet::image_view(2, self.diffuse.clone()),
+                WriteDescriptorSet::sampler(0, self.diffuse_sampler.clone()),
+                WriteDescriptorSet::image_view(1, self.diffuse.clone()),
             ],
             []
         )?;
@@ -90,11 +78,10 @@ impl VulkanMaterial for VulkanSimpleShaderMaterial {
         to.bind_descriptor_sets(
             PipelineBindPoint::Graphics,
             pipeline.layout().clone(),
-            0,
+            1,
             set
         );
 
-        to.bind_pipeline_graphics(pipeline.clone())?;
         Ok(())
     }
 

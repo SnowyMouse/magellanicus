@@ -18,6 +18,7 @@ use std::boxed::Box;
 use std::collections::BTreeMap;
 use std::time::Instant;
 use std::vec::Vec;
+use glam::{Mat3, Mat4, Vec3};
 use raw_window_handle::{HasDisplayHandle, HasRawDisplayHandle, HasRawWindowHandle};
 use vulkano::command_buffer::allocator::{CommandBufferAllocator, StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo};
 use vulkano::descriptor_set::allocator::{StandardDescriptorSetAllocator, StandardDescriptorSetAllocatorCreateInfo};
@@ -26,13 +27,16 @@ use vulkano::instance::{Instance, InstanceCreateInfo, InstanceExtensions};
 use vulkano::memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator};
 use vulkano::swapchain::{acquire_next_image, Surface, Swapchain, SwapchainAcquireFuture, SwapchainCreateInfo, SwapchainPresentInfo};
 use vulkano::{Validated, ValidationError, Version, VulkanError, VulkanLibrary};
+use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferInheritanceInfo, CommandBufferInheritanceRenderPassType, CommandBufferInheritanceRenderingInfo, CommandBufferUsage, PrimaryAutoCommandBuffer, PrimaryCommandBufferAbstract, RenderingAttachmentInfo, RenderingInfo, SecondaryAutoCommandBuffer, SubpassContents};
+use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::format::Format;
 use vulkano::image::{Image, ImageCreateInfo, ImageType, ImageUsage};
 use vulkano::image::view::ImageView;
+use vulkano::padded::Padded;
 use vulkano::pipeline::graphics::rasterization::CullMode;
 use vulkano::pipeline::graphics::viewport::Viewport;
-use vulkano::pipeline::GraphicsPipeline;
+use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
 use vulkano::render_pass::{AttachmentLoadOp, AttachmentStoreOp};
 use vulkano::sync::GpuFuture;
 pub use bitmap::*;
@@ -207,33 +211,23 @@ impl VulkanRenderer {
                 extent: [i.rel_width * width, i.rel_height * height],
                 depth_range: 0.0..=1.0,
             };
-
-            let proj = glam::Mat4::perspective_lh(
+            let proj = Mat4::perspective_lh(
                 i.camera.fov,
                 viewport.extent[0] / viewport.extent[1],
                 0.05,
                 1000.0
             );
-
-            let view = glam::Mat4::look_to_lh(
+            let view = Mat4::look_to_lh(
                 i.camera.position,
                 i.camera.rotation,
-                glam::Vec3::new(0.0, 0.0, -1.0)
+                Vec3::new(0.0, 0.0, -1.0)
             );
 
             command_builder.set_viewport(0, [viewport].into_iter().collect());
 
+            upload_mvp_data(renderer, Vec3::default(), Mat3::IDENTITY, view, proj, &mut command_builder);
+
             for geometry in &currently_loaded_bsp.geometries {
-                let model = glam::Mat4::IDENTITY;
-
-                let model_data = VulkanModelData {
-                    world: model.to_cols_array_2d(),
-                    view: view.to_cols_array_2d(),
-                    proj: proj.to_cols_array_2d(),
-                    offset: [0.0, 0.0, 0.0],
-                    rotation: glam::Mat3::IDENTITY.to_cols_array_2d()
-                };
-
                 let shader = renderer.shaders.get(&geometry.vulkan.shader).expect("no shader?");
                 let vulkan_shader = &shader.vulkan;
                 let stages = vulkan_shader.pipeline_data.get_stages();
@@ -264,7 +258,7 @@ impl VulkanRenderer {
 
                     vulkan_shader
                         .pipeline_data
-                        .generate_stage_commands(renderer, index, &model_data, &mut command_builder)
+                        .generate_stage_commands(renderer, index, &mut command_builder)
                         .expect("can't generate stage commands");
 
                     command_builder
@@ -376,4 +370,40 @@ impl Error {
     fn from_vulkan_impl_error(error: String) -> Self {
         Self::GraphicsAPIError { backend: "Vulkan-IMPL", error }
     }
+}
+
+fn upload_mvp_data(renderer: &Renderer, offset: Vec3, rotation: Mat3, view: Mat4, proj: Mat4, builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>) {
+    let pipeline = renderer.renderer.pipelines[&VulkanPipelineType::SolidColor].get_pipeline();
+    let model = Mat4::IDENTITY;
+    let model_data = VulkanModelData {
+        world: model.to_cols_array_2d(),
+        view: view.to_cols_array_2d(),
+        proj: proj.to_cols_array_2d(),
+        offset: Padded::from(offset.to_array()),
+        rotation: [
+            Padded::from(rotation.x_axis.to_array()),
+            Padded::from(rotation.y_axis.to_array()),
+            Padded::from(rotation.z_axis.to_array())
+        ]
+    };
+    let uniform_buffer = Buffer::from_data(
+        renderer.renderer.memory_allocator.clone(),
+        BufferCreateInfo { usage: BufferUsage::UNIFORM_BUFFER, ..Default::default() },
+        default_allocation_create_info(),
+        model_data
+    ).unwrap();
+    let set = PersistentDescriptorSet::new(
+        renderer.renderer.descriptor_set_allocator.as_ref(),
+        pipeline.layout().set_layouts()[0].clone(),
+        [
+            WriteDescriptorSet::buffer(0, uniform_buffer),
+        ],
+        []
+    ).unwrap();
+    builder.bind_descriptor_sets(
+        PipelineBindPoint::Graphics,
+        pipeline.layout().clone(),
+        0,
+        set
+    );
 }

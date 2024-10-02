@@ -1,6 +1,7 @@
 use vulkano::buffer::BufferContents;
 use vulkano::pipeline::graphics::vertex_input::Vertex;
 use alloc::string::ToString;
+use vulkano::padded::Padded;
 
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
@@ -34,6 +35,6 @@ pub struct VulkanModelData {
     pub world: [[f32; 4]; 4],
     pub view: [[f32; 4]; 4],
     pub proj: [[f32; 4]; 4],
-    pub offset: [f32; 3],
-    pub rotation: [[f32; 3]; 3],
+    pub offset: Padded<[f32; 3], 4>,
+    pub rotation: [Padded<[f32; 3], 4>; 3],
 }
