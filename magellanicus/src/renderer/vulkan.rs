@@ -62,7 +62,7 @@ pub struct VulkanRenderer {
     swapchain: Arc<Swapchain>,
     surface: Arc<Surface>,
     swapchain_images: Vec<Arc<Image>>,
-    swapchain_image_views: Vec<(Arc<ImageView>, Arc<ImageView>)>,
+    swapchain_image_views: Vec<Arc<ImageView>>,
 }
 
 impl VulkanRenderer {
@@ -99,26 +99,12 @@ impl VulkanRenderer {
             .unwrap()[0]
             .0;
 
-        let (swapchain, swapchain_images) = build_swapchain(device.clone(), surface.clone(), output_format, resolution)?;
+        let (swapchain, swapchain_images) = build_swapchain(device.clone(), surface.clone(), output_format, renderer_parameters)?;
 
         let pipelines = load_all_pipelines(device.clone(), output_format)?;
 
         let swapchain_image_views = swapchain_images.iter().map(|v| {
-            let color = ImageView::new_default(v.clone()).unwrap();
-            let depth = ImageView::new_default(
-                Image::new(
-                    memory_allocator.clone(),
-                    ImageCreateInfo {
-                        image_type: ImageType::Dim2d,
-                        format: Format::D16_UNORM,
-                        extent: color.image().extent(),
-                        usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT | ImageUsage::TRANSIENT_ATTACHMENT,
-                        ..Default::default()
-                    },
-                    AllocationCreateInfo::default(),
-                ).unwrap(),
-            ).unwrap();
-            (color, depth)
+            ImageView::new_default(v.clone()).unwrap()
         }).collect();
 
         Ok(Self {
@@ -168,7 +154,20 @@ impl VulkanRenderer {
             CommandBufferUsage::OneTimeSubmit
         ).expect("failed to init command builder");
 
-        let (color_view, depth_view) = renderer.renderer.swapchain_image_views[image_index as usize].clone();
+        let (color_view) = renderer.renderer.swapchain_image_views[image_index as usize].clone();
+
+        let depth_image = Image::new(
+            renderer.renderer.memory_allocator.clone(),
+            ImageCreateInfo {
+                extent: color_view.image().extent(),
+                format: Format::D16_UNORM,
+                image_type: ImageType::Dim2d,
+                usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT,
+                ..Default::default()
+            },
+            AllocationCreateInfo::default()
+        ).unwrap();
+        let depth_view = ImageView::new_default(depth_image).unwrap();
 
         command_builder.begin_rendering(RenderingInfo {
             color_attachments: vec![Some(RenderingAttachmentInfo {

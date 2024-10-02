@@ -6,12 +6,12 @@ use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, Features, Queue, QueueCreateInfo, QueueFlags};
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::instance::{Instance, InstanceCreateInfo, InstanceExtensions};
-use vulkano::swapchain::{Surface, Swapchain, SwapchainCreateInfo};
+use vulkano::swapchain::{PresentMode, Surface, Swapchain, SwapchainCreateInfo};
 use vulkano::{Validated, Version, VulkanError, VulkanLibrary};
 use vulkano::format::Format;
 use vulkano::image::{Image, ImageUsage};
 use crate::error::{Error, MResult};
-use crate::renderer::Resolution;
+use crate::renderer::{RendererParameters, Resolution};
 
 pub struct LoadedVulkan {
     pub instance: Arc<Instance>,
@@ -84,7 +84,7 @@ fn create_device_and_queues(physical_device: Arc<PhysicalDevice>, device_extensi
     )
 }
 
-pub fn build_swapchain(device: Arc<Device>, surface: Arc<Surface>, image_format: Format, resolution: Resolution) -> MResult<(Arc<Swapchain>, Vec<Arc<Image>>)> {
+pub fn build_swapchain(device: Arc<Device>, surface: Arc<Surface>, image_format: Format, renderer_parameters: &RendererParameters) -> MResult<(Arc<Swapchain>, Vec<Arc<Image>>)> {
     let surface_capabilities = device
         .physical_device()
         .surface_capabilities(surface.as_ref(), Default::default())
@@ -96,8 +96,15 @@ pub fn build_swapchain(device: Arc<Device>, surface: Arc<Surface>, image_format:
         SwapchainCreateInfo {
             min_image_count: surface_capabilities.min_image_count.max(2),
             image_format,
-            image_extent: [resolution.width, resolution.height],
+            image_extent: [renderer_parameters.resolution.width, renderer_parameters.resolution.height],
             image_usage: ImageUsage::COLOR_ATTACHMENT,
+            present_mode: if renderer_parameters.vsync || !surface_capabilities.compatible_present_modes.contains(&PresentMode::Immediate) {
+                // This is guaranteed to be supported as per the Vulkan standard.
+                PresentMode::Immediate
+            } else {
+                // This should be supported, but it is not technically required, so we have the compatiblity_present_modes check.
+                PresentMode::Immediate
+            },
 
             // The alpha mode indicates how the alpha value of the final image will behave. For
             // example, you can choose whether the window will be opaque or transparent.

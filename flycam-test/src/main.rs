@@ -177,7 +177,8 @@ impl ApplicationHandler for FlycamTestHandler {
         let PhysicalSize { width, height } = window.inner_size();
         let renderer = Renderer::new(RendererParameters {
             resolution: Resolution { width, height },
-            number_of_viewports: 1
+            number_of_viewports: 1,
+            vsync: false
         }, window.clone());
 
         match renderer {

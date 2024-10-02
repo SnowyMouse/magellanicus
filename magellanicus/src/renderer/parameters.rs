@@ -22,14 +22,20 @@ pub struct RendererParameters {
     /// Number of viewports (must be 1-4)
     ///
     /// Default = 1
-    pub number_of_viewports: usize
+    pub number_of_viewports: usize,
+
+    /// Enable vSync.
+    ///
+    /// Default = false
+    pub vsync: bool
 }
 
 impl Default for RendererParameters {
     fn default() -> Self {
         Self {
             resolution: Resolution { width: 640, height: 480 },
-            number_of_viewports: 1
+            number_of_viewports: 1,
+            vsync: false
         }
     }
 }
