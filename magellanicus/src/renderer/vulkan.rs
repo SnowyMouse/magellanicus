@@ -56,7 +56,7 @@ pub struct VulkanRenderer {
     command_buffer_allocator: StandardCommandBufferAllocator,
     descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
     queue: Arc<Queue>,
-    future: Option<Box<dyn GpuFuture>>,
+    future: Option<Box<dyn GpuFuture + Send + Sync>>,
     pipelines: BTreeMap<VulkanPipelineType, Arc<dyn VulkanPipelineData>>,
     output_format: Format,
     swapchain: Arc<Swapchain>,
@@ -91,7 +91,7 @@ impl VulkanRenderer {
         ));
 
         let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
-        let future = Some(vulkano::sync::now(device.clone()).boxed());
+        let future = Some(vulkano::sync::now(device.clone()).boxed_send_sync());
 
         let output_format = device
             .physical_device()
@@ -292,11 +292,11 @@ impl VulkanRenderer {
             .then_swapchain_present(renderer.renderer.queue.clone(), swapchain_present)
             .then_signal_fence_and_flush() {
             Ok(n) => {
-                renderer.renderer.future = Some(n.boxed());
+                renderer.renderer.future = Some(n.boxed_send_sync());
                 true
             }
             Err(Validated::Error(VulkanError::OutOfDate)) => {
-                renderer.renderer.future = Some(vulkano::sync::now(renderer.renderer.device.clone()).boxed());
+                renderer.renderer.future = Some(vulkano::sync::now(renderer.renderer.device.clone()).boxed_send_sync());
                 false
             }
             Err(e) => {
@@ -312,7 +312,7 @@ impl VulkanRenderer {
             .take()
             .expect("no future?")
             .join(execution)
-            .boxed();
+            .boxed_send_sync();
 
         self.future = Some(future)
     }

@@ -36,7 +36,7 @@ pub enum VulkanMaterialTextureCoordsType {
     Lightmaps
 }
 
-pub trait VulkanMaterial: 'static {
+pub trait VulkanMaterial: Send + Sync + 'static {
     /// Get all stages for the shader.
     fn get_stages(&self) -> &[VulkanMaterialShaderStage];
 

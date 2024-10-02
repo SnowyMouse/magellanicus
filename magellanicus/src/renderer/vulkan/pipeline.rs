@@ -10,7 +10,7 @@ pub mod solid_color;
 pub mod simple_texture;
 mod pipeline_loader;
 
-pub trait VulkanPipelineData {
+pub trait VulkanPipelineData: Send + Sync + 'static {
     fn get_pipeline(&self) -> Arc<GraphicsPipeline>;
 }
 
