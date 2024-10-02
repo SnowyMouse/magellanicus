@@ -5,6 +5,7 @@ use alloc::vec::Vec;
 use alloc::format;
 use alloc::vec;
 use alloc::borrow::ToOwned;
+use std::println;
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use data::*;
 
@@ -162,7 +163,7 @@ impl Renderer {
     /// - replacing a pipeline would break any dependencies
     pub fn add_shader(&mut self, path: &str, shader: AddShaderParameter) -> MResult<()> {
         let shader_path = Arc::new(path.to_owned());
-        if self.bsps.contains_key(&shader_path) {
+        if self.shaders.contains_key(&shader_path) {
             return Err(Error::from_data_error_string(format!("{path} already exists (replacing shaders is not yet supported)")))
         }
 
@@ -180,19 +181,31 @@ impl Renderer {
     /// - `geometry` is invalid
     /// - `geometry` contains invalid dependencies
     /// - replacing a geometry would break any dependencies
-    pub fn add_geometry(&mut self, path: &str, geometry: AddGeometryParameter) -> Result<(), String> {
+    pub fn add_geometry(&mut self, path: &str, geometry: AddGeometryParameter) -> MResult<()> {
         todo!()
     }
 
     /// Add a sky.
     ///
-    /// Note that replacing skies is not yet supported.
-    ///
     /// This will error if:
     /// - `sky` is invalid
     /// - `sky` contains invalid dependencies
-    pub fn add_sky(&mut self, path: &str, sky: AddSkyParameter) -> Result<(), String> {
-        todo!()
+    pub fn add_sky(&mut self, path: &str, sky: AddSkyParameter) -> MResult<()> {
+        sky.validate(self)?;
+
+        self.skies.insert(Arc::new(path.to_owned()), Sky {
+            geometry: sky.geometry.map(|s| self.geometries.get_key_value(&s).unwrap().0.clone()),
+            outdoor_fog_color: sky.outdoor_fog_color,
+            outdoor_fog_maximum_density: sky.outdoor_fog_maximum_density,
+            outdoor_fog_start_distance: sky.outdoor_fog_start_distance,
+            outdoor_fog_opaque_distance: sky.outdoor_fog_opaque_distance,
+            indoor_fog_color: sky.indoor_fog_color,
+            indoor_fog_maximum_density: sky.indoor_fog_maximum_density,
+            indoor_fog_start_distance: sky.indoor_fog_start_distance,
+            indoor_fog_opaque_distance: sky.indoor_fog_opaque_distance,
+        });
+
+        Ok(())
     }
 
     /// Add a BSP.
@@ -310,8 +323,8 @@ impl Renderer {
 
         let viewport = &mut self.player_viewports[viewport];
         viewport.camera = Camera {
-            position: Vec3::from(camera.position),
-            rotation: Vec3::from(camera.rotation).try_normalize().unwrap_or(Vec3::new(0.0, 1.0, 0.0)),
+            position: camera.position,
+            rotation: Vec3::from(camera.rotation).try_normalize().unwrap_or(Vec3::new(0.0, 1.0, 0.0)).into(),
             fov: camera.fov
         }
     }

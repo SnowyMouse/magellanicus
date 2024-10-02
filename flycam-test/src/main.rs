@@ -1,4 +1,4 @@
-use magellanicus::renderer::{AddBSPParameter, AddBSPParameterLightmapMaterial, AddBSPParameterLightmapSet, AddBitmapBitmapParameter, AddBitmapParameter, AddBitmapSequenceParameter, AddShaderBasicShaderData, AddShaderData, AddShaderParameter, BitmapFormat, BitmapSprite, BitmapType, Renderer, RendererParameters, Resolution, SetDefaultBitmaps, ShaderType};
+use magellanicus::renderer::{AddBSPParameter, AddBSPParameterLightmapMaterial, AddBSPParameterLightmapSet, AddBitmapBitmapParameter, AddBitmapParameter, AddBitmapSequenceParameter, AddShaderBasicShaderData, AddShaderData, AddShaderParameter, AddSkyParameter, BSP3DNode, BSP3DNodeChild, BSP3DPlane, BSPCluster, BSPData, BSPLeaf, BitmapFormat, BitmapSprite, BitmapType, Renderer, RendererParameters, Resolution, SetDefaultBitmaps, ShaderType};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
@@ -11,7 +11,7 @@ use winit::window::{Window, WindowId};
 
 use clap::Parser;
 use magellanicus::vertex::{LightmapVertex, ModelTriangle, ModelVertex};
-use ringhopper::definitions::{Bitmap, BitmapDataFormat, Globals, Scenario, ScenarioStructureBSP, ShaderEnvironment, ShaderModel, ShaderTransparentChicago, ShaderTransparentChicagoExtended, ShaderTransparentGeneric, ShaderTransparentGlass, ShaderTransparentMeter, UnicodeStringList};
+use ringhopper::definitions::{Bitmap, BitmapDataFormat, Globals, Scenario, ScenarioStructureBSP, ShaderEnvironment, ShaderModel, ShaderTransparentChicago, ShaderTransparentChicagoExtended, ShaderTransparentGeneric, ShaderTransparentGlass, ShaderTransparentMeter, Sky, UnicodeStringList};
 use ringhopper::primitives::dynamic::DynamicTagDataArray;
 use ringhopper::primitives::engine::Engine;
 use ringhopper::primitives::primitive::{TagGroup, TagPath};
@@ -219,6 +219,11 @@ impl ApplicationHandler for FlycamTestHandler {
             return event_loop.exit();
         }
 
+        if let Err(e) = self.load_skies() {
+            eprintln!("ERROR LOADING skies: {e}");
+            return event_loop.exit();
+        }
+
         if let Err(e) = self.load_bsps() {
             eprintln!("ERROR: {e}");
             return event_loop.exit();
@@ -242,11 +247,11 @@ impl ApplicationHandler for FlycamTestHandler {
             .take(renderer.get_viewport_count()) {
             renderer.set_camera_for_viewport(vi, magellanicus::renderer::Camera {
                 fov: 70.0f32.to_radians(),
-                position: magellanicus::renderer::Vec3::new(location.position.x as f32, location.position.y as f32, location.position.z as f32 + 0.7),
+                position: [location.position.x as f32, location.position.y as f32, location.position.z as f32 + 0.7],
                 rotation: {
                     let x = location.facing.angle.cos();
                     let y = location.facing.angle.sin();
-                    magellanicus::renderer::Vec3::new(x, y, 0.0)
+                    [x, y, 0.0]
                 },
             });
         }
@@ -587,6 +592,35 @@ impl FlycamTestHandler {
         renderer.add_shader(&path.to_string(), new_shader).map_err(|e| e.to_string())
     }
 
+    fn load_skies(&mut self) -> Result<(), String> {
+        let renderer = self.renderer.as_mut().unwrap();
+
+        let all_skies = self.scenario_data
+            .tags
+            .iter()
+            .filter(|f| f.0.group() == TagGroup::Sky);
+
+        for (path, tag) in all_skies {
+            Self::load_sky(renderer, path, tag.get_ref().unwrap()).map_err(|e| format!("Failed to load sky {path}: {e}"))?;
+        }
+
+        Ok(())
+    }
+
+    fn load_sky(renderer: &mut Renderer, path: &TagPath, sky: &Sky) -> Result<(), String> {
+        renderer.add_sky(&path.to_string(), AddSkyParameter {
+            geometry: None,
+            outdoor_fog_color: [sky.outdoor_fog.color.red as f32, sky.outdoor_fog.color.green as f32, sky.outdoor_fog.color.blue as f32],
+            outdoor_fog_maximum_density: sky.outdoor_fog.maximum_density as f32,
+            outdoor_fog_start_distance: sky.outdoor_fog.start_distance as f32,
+            outdoor_fog_opaque_distance: sky.outdoor_fog.opaque_distance as f32,
+            indoor_fog_color: [sky.indoor_fog.color.red as f32, sky.indoor_fog.color.green as f32, sky.indoor_fog.color.blue as f32],
+            indoor_fog_maximum_density: sky.indoor_fog.maximum_density as f32,
+            indoor_fog_start_distance: sky.indoor_fog.start_distance as f32,
+            indoor_fog_opaque_distance: sky.indoor_fog.opaque_distance as f32,
+        }).map_err(|e| e.to_string())
+    }
+
     fn load_bsps(&mut self) -> Result<(), String> {
         let renderer = self.renderer.as_mut().unwrap();
 
@@ -599,7 +633,37 @@ impl FlycamTestHandler {
         for (path, bsp) in all_bsps {
             let mut add_bsp = AddBSPParameter {
                 lightmap_bitmap: bsp.lightmaps_bitmap.path().map(|p| p.to_native_path()),
-                lightmap_sets: Vec::with_capacity(bsp.lightmaps.items.len())
+                lightmap_sets: Vec::with_capacity(bsp.lightmaps.items.len()),
+                bsp_data: BSPData {
+                    nodes: bsp.collision_bsp.items[0].bsp3d_nodes.items.iter().map(|i| BSP3DNode {
+                        front_child: BSP3DNodeChild::from_flagged_u32(i.front_child),
+                        back_child: BSP3DNodeChild::from_flagged_u32(i.back_child),
+                        plane: i.plane as usize
+                    }).collect(),
+                    planes: bsp.collision_bsp.items[0].planes.items.iter().map(|i| BSP3DPlane {
+                        angle: [i.plane.vector.x as f32, i.plane.vector.y as f32, i.plane.vector.z as f32],
+                        offset: i.plane.d as f32
+                    }).collect(),
+                    leaves: bsp.leaves.items.iter().map(|i| BSPLeaf {
+                        cluster: i.cluster.unwrap() as usize
+                    }).collect(),
+                    clusters: bsp.clusters.items.iter().map(|i| BSPCluster {
+                        sky: if let Some(sky) = i.sky {
+                            self.scenario_data
+                                .scenario_tag
+                                .skies
+                                .items.get(sky as usize)
+                                .ok_or_else(|| format!("BSP {path} references sky {sky} which isn't valid on the scenario"))
+                                .unwrap()
+                                .sky
+                                .path()
+                                .map(|s| s.to_string())
+                        }
+                        else {
+                            None
+                        }
+                    }).collect(),
+                },
             };
 
             for (lightmap_index, lightmap) in bsp.lightmaps.items.iter().enumerate() {

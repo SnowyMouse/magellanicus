@@ -1,6 +1,9 @@
 use alloc::vec::Vec;
 use alloc::string::String;
 use alloc::format;
+use alloc::borrow::ToOwned;
+use alloc::vec;
+use glam::Vec3;
 use crate::error::{Error, MResult};
 use crate::renderer::data::{Bitmap, Shader, ShaderType};
 use crate::renderer::Renderer;
@@ -13,7 +16,10 @@ pub struct AddBSPParameter {
     pub lightmap_bitmap: Option<String>,
 
     /// All geometries of the BSP.
-    pub lightmap_sets: Vec<AddBSPParameterLightmapSet>
+    pub lightmap_sets: Vec<AddBSPParameterLightmapSet>,
+
+    /// BSP data
+    pub bsp_data: BSPData
 }
 
 pub struct AddBSPParameterLightmapSet {
@@ -87,6 +93,167 @@ impl AddBSPParameter {
                 // only be rendered on objects.
                 if *shader_type == ShaderType::Model {
                     return Err(Error::from_data_error_string(format!("BSP material #{material_index} of lightmap #{lightmap_index} references pipeline {shader_path}, a {shader_type:?} type which isn't allowed for BSPs")))
+                }
+            }
+        }
+
+        self.bsp_data.validate(renderer)?;
+
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct BSPData {
+    pub nodes: Vec<BSP3DNode>,
+    pub planes: Vec<BSP3DPlane>,
+    pub leaves: Vec<BSPLeaf>,
+    pub clusters: Vec<BSPCluster>
+}
+
+impl Default for BSPData {
+    fn default() -> Self {
+        Self {
+            nodes: vec![BSP3DNode { front_child: None, back_child: None, plane: 0 }],
+            planes: vec![BSP3DPlane { angle: [0.0, 1.0, 0.0], offset: 0.0 }],
+            leaves: Vec::new(),
+            clusters: Vec::new()
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct BSP3DNode {
+    pub front_child: Option<BSP3DNodeChild>,
+    pub back_child: Option<BSP3DNodeChild>,
+    pub plane: usize
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct BSPLeaf {
+    pub cluster: usize
+}
+
+#[derive(Clone, Debug)]
+pub struct BSPCluster {
+    pub sky: Option<String>
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum BSP3DNodeChild {
+    Node(usize),
+    Leaf(usize)
+}
+
+impl BSP3DNodeChild {
+    pub fn from_flagged_u32(data: u32) -> Option<Self> {
+        if data == 0xFFFFFFFF {
+            None
+        }
+        else if (data & 0x80000000) != 0 {
+            Some(Self::Leaf((data as usize) & 0x7FFFFFFF))
+        }
+        else {
+            Some(Self::Node((data as usize) & 0x7FFFFFFF))
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct BSP3DPlane {
+    pub angle: [f32; 3],
+    pub offset: f32
+}
+
+impl BSPData {
+    pub fn find_cluster(&self, position: [f32; 3]) -> Option<usize> {
+        self.find_leaf(position).map(|l| self.leaves[l].cluster)
+    }
+
+    pub fn find_leaf(&self, position: [f32; 3]) -> Option<usize> {
+        let position = Vec3::from(position);
+        let mut node = self.nodes[0];
+        loop {
+            let plane = self.planes[node.plane];
+            let angle = Vec3::from(plane.angle);
+
+            if position.dot(angle) >= plane.offset {
+                match node.front_child? {
+                    BSP3DNodeChild::Node(n) => node = self.nodes[n],
+                    BSP3DNodeChild::Leaf(l) => return Some(l)
+                }
+            }
+            else {
+                match node.back_child? {
+                    BSP3DNodeChild::Node(n) => node = self.nodes[n],
+                    BSP3DNodeChild::Leaf(l) => return Some(l)
+                }
+            }
+        }
+    }
+
+    fn validate(&self, renderer: &Renderer) -> MResult<()> {
+        if self.nodes.is_empty() {
+            return Err(Error::from_data_error_string("No nodes present".to_owned()))
+        }
+
+        let mut tested_nodes = alloc::vec![false; self.nodes.len()];
+        for (index, node) in self.nodes.iter().enumerate() {
+            self.validate_3d_node(index, self.nodes.len() + 3, &mut tested_nodes)?;
+        }
+        for (index, leaf) in self.leaves.iter().enumerate() {
+            if leaf.cluster >= self.clusters.len() {
+                return Err(Error::from_data_error_string(format!("Leaf #{index} points to cluster #{} which does not exist", leaf.cluster)))
+            }
+        }
+        for (index, cluster) in self.clusters.iter().enumerate() {
+            if let Some(sky) = cluster.sky.as_ref() {
+                if !renderer.skies.contains_key(sky) {
+                    return Err(Error::from_data_error_string(format!("Cluster #{index} points to sky {sky} which has not been loaded")))
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_3d_node(&self, node: usize, mut remaining_tests: usize, nodes_tested: &mut [bool]) -> MResult<()> {
+        // Verified to be OK?
+        if nodes_tested[node] {
+            return Ok(())
+        }
+        if remaining_tests == 0 {
+            return Err(Error::from_data_error_string("infinite loop detected when traversing nodes".to_owned()))
+        }
+        remaining_tests -= 1;
+
+        let node_data = &self.nodes[node];
+        let front_child = node_data.front_child;
+        let back_child = node_data.back_child;
+
+        if let Some(front) = front_child {
+            self.validate_child(node, front, remaining_tests, nodes_tested);
+        }
+
+        if let Some(back) = back_child {
+            self.validate_child(node, back, remaining_tests, nodes_tested);
+        }
+
+        nodes_tested[node] = true;
+        Ok(())
+    }
+
+    #[inline(always)]
+    fn validate_child(&self, node: usize, child: BSP3DNodeChild, mut remaining_tests: usize, nodes_tested: &mut [bool]) -> MResult<()> {
+        match child {
+            BSP3DNodeChild::Node(n) => {
+                if n >= self.nodes.len() {
+                    return Err(Error::from_data_error_string(format!("broken BSP: node #{n}, referenced by node #{node}, does not exist")))
+                }
+                self.validate_3d_node(n, remaining_tests - 1, nodes_tested)?;
+            }
+            BSP3DNodeChild::Leaf(n) => {
+                if n >= self.leaves.len() {
+                    return Err(Error::from_data_error_string(format!("broken BSP: leaf #{n}, referenced by node #{node}, does not exist")))
                 }
             }
         }

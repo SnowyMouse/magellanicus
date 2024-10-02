@@ -1,12 +1,13 @@
 use std::prelude::rust_2015::Vec;
 use crate::error::MResult;
-use crate::renderer::{AddBSPParameter, AddShaderParameter, Renderer};
+use crate::renderer::{AddBSPParameter, AddShaderParameter, BSPData, Renderer};
 use crate::renderer::vulkan::{VulkanBSPData, VulkanBSPGeometryData};
 
 #[derive(Default)]
 pub struct BSP {
     pub vulkan: VulkanBSPData,
-    pub geometries: Vec<BSPGeometry>
+    pub geometries: Vec<BSPGeometry>,
+    pub bsp_data: BSPData
 }
 
 impl BSP {
@@ -28,7 +29,7 @@ impl BSP {
             })
         }
 
-        Ok(Self { vulkan, geometries })
+        Ok(Self { vulkan, geometries, bsp_data: add_bsp_parameter.bsp_data })
     }
 }
 

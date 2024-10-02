@@ -39,7 +39,12 @@ pub enum DepthAccess {
     /// This will pass as long as nothing is in front of the vertices.
     ///
     /// This is used if one needs to write to the depth buffer.
-    DepthWrite
+    DepthWrite,
+
+    /// The depth buffer is completely ignored.
+    ///
+    /// Draw on top of whatever is there.
+    NoDepth
 }
 
 #[derive(Clone, Default)]
@@ -124,6 +129,7 @@ pub fn load_pipeline(
                         DepthAccess::DepthWrite => CompareOp::LessOrEqual,
                         DepthAccess::DepthReadOnly => CompareOp::Equal,
                         DepthAccess::DepthReadOnlyTransparent => CompareOp::LessOrEqual,
+                        DepthAccess::NoDepth => CompareOp::Always
                     }
                 }),
                 ..DepthStencilState::default()

@@ -1,3 +1,4 @@
+use glam::Vec3;
 use crate::renderer::vulkan::VulkanPlayerViewport;
 
 #[derive(Copy, Clone, Debug)]
@@ -30,26 +31,24 @@ impl Default for PlayerViewport {
     }
 }
 
-pub use glam::Vec3 as Vec3;
-
 #[derive(Copy, Clone, Debug)]
 pub struct Camera {
     /// FoV in radians (default = 70 degrees)
     pub fov: f32,
 
     /// Position in the map of the camera
-    pub position: Vec3,
+    pub position: [f32; 3],
 
     /// Rotation of the camera
-    pub rotation: Vec3
+    pub rotation: [f32; 3]
 }
 
 impl Default for Camera {
     fn default() -> Self {
         Self {
             fov: 70.0f32.to_radians(),
-            position: glam::Vec3::default(),
-            rotation: glam::Vec3::from([0.0, 1.0, 0.0])
+            position: Vec3::default().to_array(),
+            rotation: [0.0, 1.0, 0.0]
         }
     }
 }

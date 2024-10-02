@@ -28,7 +28,7 @@ use vulkano::memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, Standar
 use vulkano::swapchain::{acquire_next_image, Surface, Swapchain, SwapchainAcquireFuture, SwapchainCreateInfo, SwapchainPresentInfo};
 use vulkano::{Validated, ValidationError, Version, VulkanError, VulkanLibrary};
 use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage};
-use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferInheritanceInfo, CommandBufferInheritanceRenderPassType, CommandBufferInheritanceRenderingInfo, CommandBufferUsage, PrimaryAutoCommandBuffer, PrimaryCommandBufferAbstract, RenderingAttachmentInfo, RenderingInfo, SecondaryAutoCommandBuffer, SubpassContents};
+use vulkano::command_buffer::{AutoCommandBufferBuilder, ClearColorImageInfo, CommandBufferInheritanceInfo, CommandBufferInheritanceRenderPassType, CommandBufferInheritanceRenderingInfo, CommandBufferUsage, PrimaryAutoCommandBuffer, PrimaryCommandBufferAbstract, RenderingAttachmentInfo, RenderingInfo, SecondaryAutoCommandBuffer, SubpassContents};
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::format::Format;
 use vulkano::image::{Image, ImageCreateInfo, ImageType, ImageUsage};
@@ -50,7 +50,7 @@ use crate::error::{Error, MResult};
 use crate::renderer::{Renderer, RendererParameters, Resolution};
 use crate::renderer::data::BSP;
 use crate::renderer::vulkan::helper::{build_swapchain, LoadedVulkan};
-use crate::renderer::vulkan::vertex::VulkanModelData;
+use crate::renderer::vulkan::vertex::{VulkanModelData, VulkanModelVertex};
 
 pub struct VulkanRenderer {
     current_resolution: Resolution,
@@ -187,11 +187,12 @@ impl VulkanRenderer {
         ).unwrap();
         let depth_view = ImageView::new_default(depth_image).unwrap();
 
+        // Clear this real quick
         command_builder.begin_rendering(RenderingInfo {
             color_attachments: vec![Some(RenderingAttachmentInfo {
                 load_op: AttachmentLoadOp::Clear,
                 store_op: AttachmentStoreOp::Store,
-                clear_value: Some([0.5, 0.5, 0.5, 1.0].into()),
+                clear_value: Some([0.0, 0.0, 0.0, 1.0].into()),
                 ..RenderingAttachmentInfo::image_view(color_view)
             })],
             depth_attachment: Some(RenderingAttachmentInfo {
@@ -218,12 +219,30 @@ impl VulkanRenderer {
                 1000.0
             );
             let view = Mat4::look_to_lh(
-                i.camera.position,
-                i.camera.rotation,
+                i.camera.position.into(),
+                i.camera.rotation.into(),
                 Vec3::new(0.0, 0.0, -1.0)
             );
 
             command_builder.set_viewport(0, [viewport].into_iter().collect());
+            command_builder.set_cull_mode(CullMode::None).unwrap();
+
+            let cluster_index = currently_loaded_bsp.bsp_data.find_cluster(i.camera.position);
+            let cluster = cluster_index.map(|c| &currently_loaded_bsp.bsp_data.clusters[c]);
+            let sky = cluster.and_then(|c| c.sky.as_ref()).and_then(|s| renderer.skies.get(s));
+
+            if let Some(sky) = sky {
+                // TODO: determine which fog color
+                draw_box(
+                    renderer,
+                    0.0,
+                    0.0,
+                    1.0,
+                    1.0,
+                    [sky.outdoor_fog_color[0], sky.outdoor_fog_color[1], sky.outdoor_fog_color[2], 1.0],
+                    &mut command_builder
+                );
+            };
 
             upload_mvp_data(renderer, Vec3::default(), Mat3::IDENTITY, view, proj, &mut command_builder);
 
@@ -268,6 +287,8 @@ impl VulkanRenderer {
             }
         }
 
+        Self::draw_split_screen_bars(renderer, &mut command_builder, width, height);
+
         command_builder.end_rendering().expect("failed to end rendering");
 
         let commands = command_builder.build().expect("failed to build command builder");
@@ -298,6 +319,44 @@ impl VulkanRenderer {
             Err(e) => {
                 panic!("Oh, shit! Some bullshit just happened: {e}")
             }
+        }
+    }
+
+    fn draw_split_screen_bars(renderer: &mut Renderer, mut command_builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>, width: f32, height: f32) {
+        if renderer.player_viewports.len() <= 1 {
+            return;
+        }
+
+        let color = [0.0, 0.0, 0.0, 1.0];
+        let viewport = Viewport {
+            offset: [0.0, 0.0],
+            extent: [width, height],
+            depth_range: 0.0..=1.0,
+        };
+        command_builder.set_viewport(0, [viewport].into_iter().collect());
+
+        let base_thickness = 2.0;
+        let scale = (width / 640.0).min(height / 480.0).max(1.0);
+        let line_thickness_horizontal = base_thickness / height * scale;
+        let line_thickness_vertical = base_thickness / width * scale;
+
+        draw_box(renderer, 0.0, 0.5 - line_thickness_horizontal / 2.0, 1.0, line_thickness_horizontal, color, &mut command_builder)
+            .expect("can't draw split screen vertical bar");
+
+        if renderer.player_viewports.len() > 2 {
+            let y;
+            let line_height;
+
+            if renderer.player_viewports.len() == 3 {
+                y = 0.5;
+                line_height = 0.5;
+            } else {
+                y = 0.0;
+                line_height = 1.0;
+            }
+
+            draw_box(renderer, 0.5 - line_thickness_vertical / 2.0, y, line_thickness_vertical, line_height, color, &mut command_builder)
+                .expect("can't draw split screen horizontal bar");
         }
     }
 
@@ -406,4 +465,86 @@ fn upload_mvp_data(renderer: &Renderer, offset: Vec3, rotation: Mat3, view: Mat4
         0,
         set
     );
+}
+
+fn draw_box(renderer: &Renderer, x: f32, y: f32, width: f32, height: f32, color: [f32; 4], command_builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>) -> MResult<()> {
+    let indices = Buffer::from_iter(
+        renderer.renderer.memory_allocator.clone(),
+        BufferCreateInfo {
+            usage: BufferUsage::INDEX_BUFFER,
+            ..Default::default()
+        },
+        default_allocation_create_info(),
+        [0u16,1,2,0,2,3]
+    )?;
+    let vertices = Buffer::from_iter(
+        renderer.renderer.memory_allocator.clone(),
+        BufferCreateInfo {
+            usage: BufferUsage::VERTEX_BUFFER,
+            ..Default::default()
+        },
+        default_allocation_create_info(),
+        [
+            VulkanModelVertex {
+                position: [x, y, 0.5],
+                normal: [1.0, 0.0, 0.0],
+                binormal: [1.0, 0.0, 0.0],
+                tangent: [1.0, 0.0, 0.0]
+            },
+            VulkanModelVertex {
+                position: [x, y + height, 0.5],
+                normal: [1.0, 0.0, 0.0],
+                binormal: [1.0, 0.0, 0.0],
+                tangent: [1.0, 0.0, 0.0]
+            },
+            VulkanModelVertex {
+                position: [x + width, y + height, 0.5],
+                normal: [1.0, 0.0, 0.0],
+                binormal: [1.0, 0.0, 0.0],
+                tangent: [1.0, 0.0, 0.0]
+            },
+            VulkanModelVertex {
+                position: [x + width, y, 0.5],
+                normal: [1.0, 0.0, 0.0],
+                binormal: [1.0, 0.0, 0.0],
+                tangent: [1.0, 0.0, 0.0]
+            }
+        ]
+    )?;
+
+    let pipeline = renderer
+        .renderer
+        .pipelines[&VulkanPipelineType::ColorBox]
+        .get_pipeline();
+
+    let uniform_buffer = Buffer::from_data(
+        renderer.renderer.memory_allocator.clone(),
+        BufferCreateInfo { usage: BufferUsage::UNIFORM_BUFFER, ..Default::default() },
+        default_allocation_create_info(),
+        color
+    ).unwrap();
+
+    let set = PersistentDescriptorSet::new(
+        renderer.renderer.descriptor_set_allocator.as_ref(),
+        pipeline.layout().set_layouts()[1].clone(),
+        [
+            WriteDescriptorSet::buffer(0, uniform_buffer),
+        ],
+        []
+    ).unwrap();
+
+    command_builder.bind_descriptor_sets(
+        PipelineBindPoint::Graphics,
+        pipeline.layout().clone(),
+        1,
+        set
+    );
+
+    command_builder.set_cull_mode(CullMode::None);
+    command_builder.bind_index_buffer(indices);
+    command_builder.bind_vertex_buffers(0, vertices);
+    command_builder.bind_pipeline_graphics(pipeline);
+    command_builder.draw_indexed(6, 1, 0, 0, 0).unwrap();
+
+    Ok(())
 }
