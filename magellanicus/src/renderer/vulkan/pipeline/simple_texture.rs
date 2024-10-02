@@ -46,7 +46,7 @@ impl SimpleTextureShader {
         let pipeline = load_pipeline(device, vertex::load, fragment::load, &PipelineSettings {
             depth_access: DepthAccess::DepthWrite,
             vertex_buffer_descriptions: vec![VulkanModelVertex::per_vertex(), VulkanModelVertexTextureCoords::per_vertex()],
-            backface_culling: false
+            alpha_blending: false
         }, color_format)?;
 
         Ok(Self { pipeline })

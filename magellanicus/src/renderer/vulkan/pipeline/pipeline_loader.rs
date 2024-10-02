@@ -50,8 +50,8 @@ pub struct PipelineSettings {
     /// Vertex data expected to be bound and sent to the shader.
     pub vertex_buffer_descriptions: Vec<VertexBufferDescription>,
 
-    /// If true, enable backface culling and only render on the front side.
-    pub backface_culling: bool
+    /// If true, enable alpha blending. Otherwise, the pixel color will be replaced.
+    pub alpha_blending: bool
 }
 
 pub fn load_pipeline(
@@ -94,7 +94,10 @@ pub fn load_pipeline(
         subpass.color_attachment_formats.len() as u32,
         ColorBlendAttachmentState::default(),
     );
-    blend.attachments[0].blend = Some(AttachmentBlend::alpha());
+
+    if settings.alpha_blending {
+        blend.attachments[0].blend = Some(AttachmentBlend::alpha());
+    }
 
     let pipeline = GraphicsPipeline::new(
         device.clone(),

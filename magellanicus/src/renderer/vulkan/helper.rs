@@ -37,7 +37,6 @@ pub fn load_vulkan_and_get_queue(surface: Arc<impl HasRawWindowHandle + HasRawDi
     }.clone();
 
     let required_device_features = Features {
-        image_view_format_swizzle: true,
         ..Features::empty()
     };
 
@@ -78,7 +77,6 @@ fn create_device_and_queues(physical_device: Arc<PhysicalDevice>, device_extensi
             enabled_features: Features {
                 dynamic_rendering: true,
                 extended_dynamic_state: true,
-                image_view_format_swizzle: true,
                 ..Features::default()
             },
             ..Default::default()

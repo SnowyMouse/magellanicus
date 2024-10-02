@@ -34,10 +34,6 @@ impl VulkanSimpleShaderMaterial {
             .clone();
 
         let diffuse = ImageView::new(diffuse.clone(), ImageViewCreateInfo {
-            component_mapping: ComponentMapping {
-                a: ComponentSwizzle::One,
-                ..Default::default()
-            },
             subresource_range: ImageSubresourceRange {
                 aspects: ImageAspects::COLOR,
                 mip_levels: 0..diffuse.mip_levels(),
