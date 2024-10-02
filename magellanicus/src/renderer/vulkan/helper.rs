@@ -98,11 +98,11 @@ pub fn build_swapchain(device: Arc<Device>, surface: Arc<Surface>, image_format:
             image_format,
             image_extent: [renderer_parameters.resolution.width, renderer_parameters.resolution.height],
             image_usage: ImageUsage::COLOR_ATTACHMENT,
-            present_mode: if renderer_parameters.vsync || !surface_capabilities.compatible_present_modes.contains(&PresentMode::Immediate) {
+            present_mode: if renderer_parameters.vsync {
                 // This is guaranteed to be supported as per the Vulkan standard.
-                PresentMode::Immediate
+                PresentMode::Fifo
             } else {
-                // This should be supported, but it is not technically required, so we have the compatiblity_present_modes check.
+                // This should be supported, but it is not technically required.
                 PresentMode::Immediate
             },
 

@@ -3,6 +3,7 @@ use alloc::sync::Arc;
 use alloc::string::String;
 use alloc::vec::Vec;
 use alloc::format;
+use alloc::vec;
 use alloc::borrow::ToOwned;
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use data::*;
@@ -27,6 +28,8 @@ pub struct Renderer {
     skies: BTreeMap<Arc<String>, Sky>,
     bsps: BTreeMap<Arc<String>, BSP>,
 
+    default_bitmaps: Option<DefaultBitmaps>,
+
     current_bsp: Option<Arc<String>>
 }
 
@@ -47,7 +50,7 @@ impl Renderer {
 
         // TODO: add player viewports
 
-        Ok(Self {
+        let mut result = Self {
             renderer: VulkanRenderer::new(&parameters, surface.clone(), parameters.resolution)?,
             player_viewports,
             bitmaps: BTreeMap::new(),
@@ -55,13 +58,17 @@ impl Renderer {
             geometries: BTreeMap::new(),
             skies: BTreeMap::new(),
             bsps: BTreeMap::new(),
-            current_bsp: None
-        })
+            current_bsp: None,
+            default_bitmaps: None
+        };
+
+        Ok(result)
     }
 
     /// Clear all data without resetting the renderer.
     ///
-    /// All objects added with `add_` methods will be cleared.
+    /// All objects added with `add_` methods will be cleared. Additionally, the default bitmaps
+    /// will be cleared.
     pub fn reset(&mut self) {
         self.bitmaps.clear();
         self.shaders.clear();
@@ -69,6 +76,7 @@ impl Renderer {
         self.skies.clear();
         self.bsps.clear();
         self.current_bsp = None;
+        self.default_bitmaps = None;
     }
 
     /// Add a bitmap with the given parameters.
@@ -178,8 +186,66 @@ impl Renderer {
         Ok(())
     }
 
+    /// Set the default bitmaps.
+    ///
+    /// If any bitmaps are not found or are not correct, this function will return `Err` with no
+    /// effect.
+    ///
+    /// This can only be called once, after which subsequent calls will error with no effect until
+    /// cleared.
+    pub fn set_default_bitmaps(&mut self, set_default_bitmaps: SetDefaultBitmaps) -> MResult<()> {
+        if self.default_bitmaps.is_some() {
+            return Err(Error::from_data_error_string("default bitmaps already set; use clear() to clear these".to_owned()))
+        }
+
+        let Some(default_2d) = self.bitmaps.get_key_value(&set_default_bitmaps.default_2d) else {
+            return Err(Error::from_data_error_string(format!("Bitmap {} was not loaded", set_default_bitmaps.default_2d)))
+        };
+        let Some(default_3d) = self.bitmaps.get_key_value(&set_default_bitmaps.default_3d) else {
+            return Err(Error::from_data_error_string(format!("Bitmap {} was not loaded", set_default_bitmaps.default_3d)))
+        };
+        let Some(default_cubemap) = self.bitmaps.get_key_value(&set_default_bitmaps.default_cubemap) else {
+            return Err(Error::from_data_error_string(format!("Bitmap {} was not loaded", set_default_bitmaps.default_cubemap)))
+        };
+
+        if default_2d.1.bitmaps.len() != 4
+            || !default_2d.1.bitmaps.iter().all(|b| b.bitmap_type == BitmapType::Dim2D)
+            || !default_2d.1.sequences.iter().all(|b| matches!(b, BitmapSequence::Bitmap { .. })) {
+            return Err(Error::from_data_error_string(format!("Bitmap {} is not 4x 2D bitmaps", set_default_bitmaps.default_2d)))
+        }
+
+        if default_3d.1.bitmaps.len() != 4
+            || !default_3d.1.bitmaps.iter().all(|b| matches!(b.bitmap_type, BitmapType::Dim3D { .. }))
+            || !default_3d.1.sequences.iter().all(|b| matches!(b, BitmapSequence::Bitmap { .. })) {
+            return Err(Error::from_data_error_string(format!("Bitmap {} is not 4x 3D bitmaps", set_default_bitmaps.default_3d)))
+        }
+
+        if default_cubemap.1.bitmaps.len() != 4
+            || !default_cubemap.1.bitmaps.iter().all(|b| b.bitmap_type == BitmapType::Cubemap)
+            || !default_cubemap.1.sequences.iter().all(|b| matches!(b, BitmapSequence::Bitmap { .. })) {
+            return Err(Error::from_data_error_string(format!("Bitmap {} is not 4x cubemap bitmaps", set_default_bitmaps.default_cubemap)))
+        }
+
+        self.default_bitmaps = Some(DefaultBitmaps {
+            default_2d: default_2d.0.to_owned(),
+            default_3d: default_3d.0.to_owned(),
+            default_cubemap: default_cubemap.0.to_owned(),
+        });
+
+        Ok(())
+    }
+
+    /// Rebuild the swapchain.
+    pub fn rebuild_swapchain(&mut self, new_parameters: RendererParameters) -> MResult<()> {
+        self.renderer.rebuild_swapchain(
+            &new_parameters
+        )
+    }
+
     /// Draw a frame.
-    pub fn draw_frame(&mut self) -> MResult<()> {
+    ///
+    /// If `true`, the swapchain needs rebuilt.
+    pub fn draw_frame(&mut self) -> MResult<bool> {
         VulkanRenderer::draw_frame(self)
     }
 }

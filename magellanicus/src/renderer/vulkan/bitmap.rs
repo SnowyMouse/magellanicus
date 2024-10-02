@@ -29,18 +29,18 @@ impl VulkanBitmapData {
 
         let mut transcoded_pixels: Vec<u8> = Vec::new();
 
-        let (format, bytes) = match parameter.format {
-            BitmapFormat::DXT1 => (Format::BC1_RGBA_UNORM_BLOCK, &parameter.data),
-            BitmapFormat::DXT3 => (Format::BC2_UNORM_BLOCK, &parameter.data),
-            BitmapFormat::DXT5 => (Format::BC3_UNORM_BLOCK, &parameter.data),
-            BitmapFormat::BC7 => (Format::BC7_UNORM_BLOCK, &parameter.data),
+        let (bitmap_format, format, bytes) = match parameter.format {
+            BitmapFormat::DXT1 => (parameter.format, Format::BC1_RGBA_UNORM_BLOCK, &parameter.data),
+            BitmapFormat::DXT3 => (parameter.format, Format::BC2_UNORM_BLOCK, &parameter.data),
+            BitmapFormat::DXT5 => (parameter.format, Format::BC3_UNORM_BLOCK, &parameter.data),
+            BitmapFormat::BC7 => (parameter.format, Format::BC7_UNORM_BLOCK, &parameter.data),
 
             // TODO: VERIFY
-            BitmapFormat::A8R8G8B8 => (Format::B8G8R8A8_UNORM, &parameter.data),
-            BitmapFormat::X8R8G8B8 => (Format::B8G8R8A8_UNORM, &parameter.data),
-            BitmapFormat::R5G6B5 => (Format::R5G6B5_UNORM_PACK16, &parameter.data),
-            BitmapFormat::A1R5G5B5 => (Format::A1R5G5B5_UNORM_PACK16, &parameter.data),
-            BitmapFormat::A4R4G4B4 => (Format::A4R4G4B4_UNORM_PACK16, &parameter.data),
+            BitmapFormat::A8R8G8B8 => (parameter.format, Format::B8G8R8A8_UNORM, &parameter.data),
+            BitmapFormat::X8R8G8B8 => (parameter.format, Format::B8G8R8A8_UNORM, &parameter.data),
+            BitmapFormat::R5G6B5 => (parameter.format, Format::R5G6B5_UNORM_PACK16, &parameter.data),
+            BitmapFormat::A1R5G5B5 => (parameter.format, Format::A1R5G5B5_UNORM_PACK16, &parameter.data),
+            BitmapFormat::A4R4G4B4 => (parameter.format, Format::A4R4G4B4_UNORM_PACK16, &parameter.data),
 
             // TODO: VERIFY ALL OF THE MONOCHROME MEMES
 
@@ -52,7 +52,7 @@ impl VulkanBitmapData {
                     transcoded_pixels.push(0xFF);
                     transcoded_pixels.push(*pixel);
                 }
-                (Format::B8G8R8A8_UNORM, &parameter.data)
+                (BitmapFormat::A8R8G8B8, Format::B8G8R8A8_UNORM, &transcoded_pixels)
             },
 
             BitmapFormat::Y8 => {
@@ -63,7 +63,7 @@ impl VulkanBitmapData {
                     transcoded_pixels.push(*pixel);
                     transcoded_pixels.push(0xFF);
                 }
-                (Format::B8G8R8A8_UNORM, &parameter.data)
+                (BitmapFormat::A8R8G8B8, Format::B8G8R8A8_UNORM, &transcoded_pixels)
             },
 
             BitmapFormat::AY8 => {
@@ -74,7 +74,7 @@ impl VulkanBitmapData {
                     transcoded_pixels.push(*pixel);
                     transcoded_pixels.push(*pixel);
                 }
-                (Format::B8G8R8A8_UNORM, &parameter.data)
+                (BitmapFormat::A8R8G8B8, Format::B8G8R8A8_UNORM, &transcoded_pixels)
             },
 
             BitmapFormat::A8Y8 => {
@@ -88,7 +88,7 @@ impl VulkanBitmapData {
                     transcoded_pixels.push(y);
                     transcoded_pixels.push(a);
                 }
-                (Format::B8G8R8A8_UNORM, &parameter.data)
+                (BitmapFormat::A8R8G8B8, Format::B8G8R8A8_UNORM, &transcoded_pixels)
             },
 
             // TODO: P8
@@ -100,7 +100,7 @@ impl VulkanBitmapData {
                     transcoded_pixels.push(*pixel);
                     transcoded_pixels.push(0xFF);
                 }
-                (Format::B8G8R8A8_UNORM, &parameter.data)
+                (BitmapFormat::A8R8G8B8, Format::B8G8R8A8_UNORM, &transcoded_pixels)
             }
         };
 
@@ -151,13 +151,13 @@ impl VulkanBitmapData {
                 BitmapType::Dim2D => MipmapType::TwoDimensional,
                 BitmapType::Dim3D { depth } => MipmapType::ThreeDimensional(NonZeroUsize::new(depth as usize).unwrap())
             },
-            NonZeroUsize::new(parameter.format.block_pixel_length()).unwrap(),
+            NonZeroUsize::new(bitmap_format.block_pixel_length()).unwrap(),
             Some(parameter.mipmap_count as usize),
         );
 
         let mut offset = 0;
-        let block_size = parameter.format.block_byte_size();
-        let pixel_size = parameter.format.block_pixel_length();
+        let block_size = bitmap_format.block_byte_size();
+        let pixel_size = bitmap_format.block_pixel_length();
         for i in iterator {
             let size = block_size * i.block_count;
             command_buffer_builder.copy_buffer_to_image(CopyBufferToImageInfo {

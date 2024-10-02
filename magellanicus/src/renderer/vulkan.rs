@@ -24,7 +24,7 @@ use vulkano::descriptor_set::allocator::{StandardDescriptorSetAllocator, Standar
 use vulkano::device::{Device, DeviceExtensions, Queue};
 use vulkano::instance::{Instance, InstanceCreateInfo, InstanceExtensions};
 use vulkano::memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator};
-use vulkano::swapchain::{acquire_next_image, Surface, Swapchain, SwapchainAcquireFuture, SwapchainPresentInfo};
+use vulkano::swapchain::{acquire_next_image, Surface, Swapchain, SwapchainAcquireFuture, SwapchainCreateInfo, SwapchainPresentInfo};
 use vulkano::{Validated, ValidationError, Version, VulkanError, VulkanLibrary};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferInheritanceInfo, CommandBufferInheritanceRenderPassType, CommandBufferInheritanceRenderingInfo, CommandBufferUsage, PrimaryAutoCommandBuffer, PrimaryCommandBufferAbstract, RenderingAttachmentInfo, RenderingInfo, SecondaryAutoCommandBuffer, SubpassContents};
 use vulkano::format::Format;
@@ -43,7 +43,7 @@ pub use sky::*;
 pub use material::*;
 pub use player_viewport::*;
 use crate::error::{Error, MResult};
-use crate::renderer::{Renderer, Resolution};
+use crate::renderer::{Renderer, RendererParameters, Resolution};
 use crate::renderer::data::BSP;
 use crate::renderer::vulkan::helper::{build_swapchain, LoadedVulkan};
 use crate::renderer::vulkan::vertex::VulkanModelData;
@@ -67,7 +67,7 @@ pub struct VulkanRenderer {
 
 impl VulkanRenderer {
     pub fn new(
-        renderer_parameters: &super::RendererParameters,
+        renderer_parameters: &RendererParameters,
         surface: Arc<impl HasRawWindowHandle + HasRawDisplayHandle + Send + Sync + 'static>,
         resolution: Resolution
     ) -> MResult<Self> {
@@ -125,17 +125,33 @@ impl VulkanRenderer {
         })
     }
 
-    pub fn draw_frame(renderer: &mut Renderer) -> MResult<()> {
+    pub fn draw_frame(renderer: &mut Renderer) -> MResult<bool> {
         let vulkan_renderer = &mut renderer.renderer;
 
         let (image_index, suboptimal, acquire_future) =
             match acquire_next_image(vulkan_renderer.swapchain.clone(), None).map_err(Validated::unwrap) {
                 Ok(r) => r,
-                Err(VulkanError::OutOfDate) => return Err(Error::from_vulkan_error(VulkanError::OutOfDate.to_string())),
+                Err(VulkanError::OutOfDate) => return Ok(false),
                 Err(e) => panic!("failed to acquire next image: {e}"),
             };
 
         Self::draw_frame_infallible(renderer, image_index, acquire_future);
+
+        Ok(!suboptimal)
+    }
+
+    pub fn rebuild_swapchain(&mut self, renderer_parameters: &RendererParameters) -> MResult<()> {
+        let (swapchain, swapchain_images) = self.swapchain.recreate(
+            SwapchainCreateInfo {
+                image_extent: [renderer_parameters.resolution.width, renderer_parameters.resolution.height],
+                ..self.swapchain.create_info()
+            }
+        )?;
+
+        self.swapchain = swapchain;
+        self.swapchain_images = swapchain_images;
+        self.swapchain_image_views = self.swapchain_images.iter().map(|i| ImageView::new_default(i.clone()).unwrap()).collect();
+        self.current_resolution = renderer_parameters.resolution;
 
         Ok(())
     }
@@ -324,11 +340,11 @@ fn default_allocation_create_info() -> AllocationCreateInfo {
     }
 }
 
-impl<T: Display> From<vulkano::Validated<T>> for Error {
-    fn from(value: vulkano::Validated<T>) -> Self {
+impl<T: Display> From<Validated<T>> for Error {
+    fn from(value: Validated<T>) -> Self {
         match value {
-            vulkano::Validated::ValidationError(v) => v.into(),
-            vulkano::Validated::Error(e) => Self::from_vulkan_error(format!("Vulkan error! {e}"))
+            Validated::ValidationError(v) => v.into(),
+            Validated::Error(e) => Self::from_vulkan_error(format!("Vulkan error! {e}"))
         }
     }
 }

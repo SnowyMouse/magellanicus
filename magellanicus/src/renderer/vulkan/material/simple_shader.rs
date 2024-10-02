@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use std::borrow::ToOwned;
+use std::string::ToString;
 use std::{println, vec};
 use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage};
 use vulkano::command_buffer::allocator::CommandBufferAllocator;
@@ -24,14 +25,15 @@ pub struct VulkanSimpleShaderMaterial {
 
 impl VulkanSimpleShaderMaterial {
     pub fn new(renderer: &mut Renderer, add_shader_parameter: AddShaderBasicShaderData) -> MResult<Self> {
-        let diffuse = renderer
-            .bitmaps
-            .get(&add_shader_parameter.bitmap)
-            .and_then(|b| b.bitmaps.get(0))
-            .ok_or_else(|| Error::from_vulkan_impl_error("failed to get bitmap".to_owned()))?
-            .vulkan
-            .image
-            .clone();
+        let diffuse = if let Some(b) = add_shader_parameter.bitmap.as_ref() {
+            renderer.bitmaps[b].bitmaps[0].vulkan.image.clone()
+        }
+        else if let Some(b) = renderer.default_bitmaps.as_ref().map(|b| &b.default_2d) {
+            renderer.bitmaps[b].bitmaps[1].vulkan.image.clone()
+        }
+        else {
+            return Err(Error::from_data_error_string("No bitmap referenced and no default bitmaps provided, either".to_string()))
+        };
 
         let diffuse = ImageView::new(diffuse.clone(), ImageViewCreateInfo {
             subresource_range: ImageSubresourceRange {

@@ -1,4 +1,4 @@
-use magellanicus::renderer::{AddBSPParameter, AddBSPParameterLightmapMaterial, AddBSPParameterLightmapSet, AddBitmapBitmapParameter, AddBitmapParameter, AddBitmapSequenceParameter, AddShaderBasicShaderData, AddShaderData, AddShaderParameter, BitmapFormat, BitmapSprite, BitmapType, Renderer, RendererParameters, Resolution, ShaderType};
+use magellanicus::renderer::{AddBSPParameter, AddBSPParameterLightmapMaterial, AddBSPParameterLightmapSet, AddBitmapBitmapParameter, AddBitmapParameter, AddBitmapSequenceParameter, AddShaderBasicShaderData, AddShaderData, AddShaderParameter, BitmapFormat, BitmapSprite, BitmapType, Renderer, RendererParameters, Resolution, SetDefaultBitmaps, ShaderType};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
@@ -11,7 +11,7 @@ use winit::window::{Window, WindowId};
 
 use clap::Parser;
 use magellanicus::vertex::{LightmapVertex, ModelTriangle, ModelVertex};
-use ringhopper::definitions::{Bitmap, BitmapDataFormat, Scenario, ScenarioStructureBSP, ShaderEnvironment, ShaderModel, ShaderTransparentChicago, ShaderTransparentChicagoExtended, ShaderTransparentGeneric, ShaderTransparentGlass, ShaderTransparentMeter, UnicodeStringList};
+use ringhopper::definitions::{Bitmap, BitmapDataFormat, Globals, Scenario, ScenarioStructureBSP, ShaderEnvironment, ShaderModel, ShaderTransparentChicago, ShaderTransparentChicagoExtended, ShaderTransparentGeneric, ShaderTransparentGlass, ShaderTransparentMeter, UnicodeStringList};
 use ringhopper::primitives::dynamic::DynamicTagDataArray;
 use ringhopper::primitives::engine::Engine;
 use ringhopper::primitives::primitive::{TagGroup, TagPath};
@@ -228,27 +228,50 @@ impl ApplicationHandler for FlycamTestHandler {
         }
     }
 
-    fn new_events(&mut self, _event_loop: &ActiveEventLoop, cause: StartCause) {
+    fn new_events(&mut self, event_loop: &ActiveEventLoop, cause: StartCause) {
         if cause == StartCause::Poll {
-            let time_start = Instant::now();
-            let render_result = self.renderer.as_mut().unwrap().draw_frame();
-            if let Err(e) = render_result {
-                eprintln!("Render fail: {e}");
-            }
-            let time_end = Instant::now() - time_start;
-            self.frame_time_counts.push(time_end);
-            if self.frame_time_counts.len() == 200 {
-                let mut time = 0u128;
-                for t in &self.frame_time_counts {
-                    time = time.saturating_add(t.as_nanos());
+            if let Some(renderer) = self.renderer.as_mut() {
+                let time_start = Instant::now();
+                match renderer.draw_frame() {
+                    Ok(n) => {
+                        if !n {
+                            let window = self.window.clone().unwrap();
+                            eprintln!("Outdated swapchain; fixing up");
+                            if let Err(e) = renderer.rebuild_swapchain(
+                                RendererParameters {
+                                    resolution: Resolution {
+                                        width: window.inner_size().width,
+                                        height: window.inner_size().height,
+                                    },
+                                    number_of_viewports: 1,
+                                    vsync: false
+                                }
+                            ) {
+                                eprintln!("Critical error rebuilding swapchain: {e}");
+                                event_loop.exit();
+                                return;
+                            }
+                        }
+                    },
+                    Err(e) => {
+                        eprintln!("Render fail: {e}");
+                    }
                 }
+                let time_end = Instant::now() - time_start;
+                self.frame_time_counts.push(time_end);
+                if self.frame_time_counts.len() == 200 {
+                    let mut time = 0u128;
+                    for t in &self.frame_time_counts {
+                        time = time.saturating_add(t.as_nanos());
+                    }
 
-                let frames_per_second = (self.frame_time_counts.len() as f64) / (time as f64 / 1000000000.0);
-                println!("FPS: {frames_per_second}");
+                    let frames_per_second = (self.frame_time_counts.len() as f64) / (time as f64 / 1000000000.0);
+                    println!("FPS: {frames_per_second}");
 
-                self.frame_time_counts.clear();
+                    self.frame_time_counts.clear();
+                }
+                return
             }
-            return
         }
     }
 }
@@ -264,6 +287,25 @@ impl FlycamTestHandler {
         
         for (path, bitmap) in all_bitmaps {
             Self::load_bitmap(renderer, &path, bitmap).map_err(|e| format!("Failed to load bitmap {path}: {e}"))?;
+        }
+
+        if let Some(default_bitmaps) = self
+            .scenario_data
+            .tags
+            .get(&TagPath::from_path("globals\\globals.globals").unwrap())
+            .and_then(|g| g.get_ref::<Globals>())
+            .and_then(|g| g.rasterizer_data.items.get(0))
+            .and_then(|g| {
+                let default_2d = g.default_2d.path().map(|p| p.to_string())?;
+                let default_3d = g.default_3d.path().map(|p| p.to_string())?;
+                let default_cubemap = g.default_cube_map.path().map(|p| p.to_string())?;
+                Some(SetDefaultBitmaps {
+                    default_2d,
+                    default_3d,
+                    default_cubemap
+                })
+            }) {
+            renderer.set_default_bitmaps(default_bitmaps).map_err(|e| format!("Failed to set default bitmaps: {e}"))?
         }
 
         Ok(())
@@ -372,7 +414,7 @@ impl FlycamTestHandler {
                 let tag = tag.get_ref::<ShaderEnvironment>().unwrap();
                 AddShaderParameter {
                     data: AddShaderData::BasicShader(AddShaderBasicShaderData {
-                        bitmap: tag.diffuse.base_map.path().ok_or_else(|| format!("{path} has no base map"))?.to_string(),
+                        bitmap: tag.diffuse.base_map.path().map(|b| b.to_string()),
                         shader_type: ShaderType::Environment,
                         alpha_tested: tag.properties.flags.alpha_tested
                     })
@@ -382,7 +424,7 @@ impl FlycamTestHandler {
                 let tag = tag.get_ref::<ShaderModel>().unwrap();
                 AddShaderParameter {
                     data: AddShaderData::BasicShader(AddShaderBasicShaderData {
-                        bitmap: tag.maps.base_map.path().ok_or_else(|| format!("{path} has no base map"))?.to_string(),
+                        bitmap: tag.maps.base_map.path().map(|q| q.to_string()),
                         shader_type: ShaderType::Model,
                         alpha_tested: !tag.properties.flags.not_alpha_tested
                     })
@@ -397,8 +439,7 @@ impl FlycamTestHandler {
                             .items
                             .get(0)
                             .and_then(|b| b.parameters.map.path())
-                            .map(|b| b.to_string())
-                            .unwrap_or_else(|| TagPath::from_path("ui\\shell\\bitmaps\\white.bitmap").unwrap().to_string()),
+                            .map(|b| b.to_string()),
                         shader_type: ShaderType::TransparentChicago,
                         alpha_tested: true
                     })
@@ -413,8 +454,7 @@ impl FlycamTestHandler {
                             .items
                             .get(0)
                             .and_then(|b| b.parameters.map.path())
-                            .map(|b| b.to_string())
-                            .unwrap_or_else(|| TagPath::from_path("ui\\shell\\bitmaps\\white.bitmap").unwrap().to_string()),
+                            .map(|b| b.to_string()),
                         shader_type: ShaderType::TransparentChicago,
                         alpha_tested: true
                     })
@@ -429,8 +469,7 @@ impl FlycamTestHandler {
                             .items
                             .get(0)
                             .and_then(|b| b.parameters.map.path())
-                            .map(|b| b.to_string())
-                            .unwrap_or_else(|| TagPath::from_path("ui\\shell\\bitmaps\\white.bitmap").unwrap().to_string()),
+                            .map(|b| b.to_string()),
                         shader_type: ShaderType::TransparentGeneric,
                         alpha_tested: true
                     })
@@ -444,8 +483,7 @@ impl FlycamTestHandler {
                             .diffuse
                             .diffuse_map
                             .path()
-                            .map(|b| b.to_string())
-                            .unwrap_or_else(|| TagPath::from_path("ui\\shell\\bitmaps\\white.bitmap").unwrap().to_string()),
+                            .map(|b| b.to_string()),
                         shader_type: ShaderType::TransparentGlass,
                         alpha_tested: true
                     })
@@ -459,8 +497,7 @@ impl FlycamTestHandler {
                             .properties
                             .map
                             .path()
-                            .map(|b| b.to_string())
-                            .unwrap_or_else(|| TagPath::from_path("ui\\shell\\bitmaps\\white.bitmap").unwrap().to_string()),
+                            .map(|b| b.to_string()),
                         shader_type: ShaderType::TransparentMeter,
                         alpha_tested: true
                     })
@@ -470,7 +507,7 @@ impl FlycamTestHandler {
                 // let tag = tag.get_ref::<ShaderTransparentPlasma>().unwrap();
                 AddShaderParameter {
                     data: AddShaderData::BasicShader(AddShaderBasicShaderData {
-                        bitmap: TagPath::from_path("ui\\shell\\bitmaps\\white.bitmap").unwrap().to_string(),
+                        bitmap: None,
                         shader_type: ShaderType::TransparentPlasma,
                         alpha_tested: true
                     })
@@ -480,7 +517,7 @@ impl FlycamTestHandler {
                 // let tag = tag.get_ref::<ShaderTransparentWater>().unwrap();
                 AddShaderParameter {
                     data: AddShaderData::BasicShader(AddShaderBasicShaderData {
-                        bitmap: TagPath::from_path("ui\\shell\\bitmaps\\white.bitmap").unwrap().to_string(),
+                        bitmap: None,
                         shader_type: ShaderType::TransparentWater,
                         alpha_tested: true
                     })

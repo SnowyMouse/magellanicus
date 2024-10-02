@@ -12,8 +12,10 @@ impl AddShaderParameter {
     pub(crate) fn validate(&self, renderer: &Renderer) -> MResult<()> {
         match &self.data {
             AddShaderData::BasicShader(AddShaderBasicShaderData { bitmap, .. }) => {
-                if !renderer.bitmaps.contains_key(bitmap) {
-                    return Err(Error::DataError { error: format!("Referenced bitmap {bitmap} is not loaded.") })
+                if let Some(bitmap) = bitmap {
+                    if !renderer.bitmaps.contains_key(bitmap) {
+                        return Err(Error::DataError { error: format!("Referenced bitmap {bitmap} is not loaded.") })
+                    }
                 }
             }
         }
@@ -28,7 +30,7 @@ pub enum AddShaderData {
 }
 
 pub struct AddShaderBasicShaderData {
-    pub bitmap: String,
+    pub bitmap: Option<String>,
     pub shader_type: ShaderType,
     pub alpha_tested: bool
 }

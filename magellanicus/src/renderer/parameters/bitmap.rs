@@ -6,6 +6,7 @@ use alloc::format;
 use alloc::borrow::ToOwned;
 use core::fmt::Display;
 use core::num::NonZeroUsize;
+use std::sync::Arc;
 use crate::error::{Error, MResult};
 use crate::renderer::parameters::bitmap::mipmap_iterator::{MipmapFaceIterator, MipmapType};
 use crate::renderer::Resolution;
@@ -34,9 +35,15 @@ impl AddBitmapParameter {
                     AddBitmapSequenceParameter::Sprites { sprites } => sprites
                         .iter()
                         .enumerate()
-                        .find_map(|(sprite_index, BitmapSprite { bitmap, .. })| self.bitmaps.get(*bitmap).is_none().then(|| {
-                            format!("Sprite {sprite_index} of sequence {sequence_index} refers to bitmap {bitmap} which is not a valid index")
-                        })),
+                        .find_map(|(sprite_index, BitmapSprite { bitmap, .. })| {
+                            let Some(b) = self.bitmaps.get(*bitmap) else {
+                                return Some(format!("Sprite {sprite_index} of sequence {sequence_index} refers to bitmap {bitmap} which is not a valid index"))
+                            };
+                            if b.bitmap_type != BitmapType::Dim2D {
+                                return Some(format!("Sprite {sprite_index} of sequence {sequence_index} refers to bitmap {bitmap} which is not a 2D texture"))
+                            }
+                            None
+                        }),
                 }
             });
 
@@ -180,4 +187,11 @@ impl BitmapFormat {
             Self::P8 => 1,
         }
     }
+}
+
+#[derive(Default)]
+pub struct SetDefaultBitmaps {
+    pub default_2d: String,
+    pub default_3d: String,
+    pub default_cubemap: String,
 }

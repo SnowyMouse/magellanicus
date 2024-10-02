@@ -1,8 +1,16 @@
 use alloc::vec::Vec;
 use alloc::string::String;
+use std::sync::Arc;
 use crate::error::MResult;
 use crate::renderer::{AddBitmapParameter, Renderer, Resolution};
 use crate::renderer::vulkan::VulkanBitmapData;
+
+#[derive(Default)]
+pub struct DefaultBitmaps {
+    pub default_2d: Arc<String>,
+    pub default_3d: Arc<String>,
+    pub default_cubemap: Arc<String>,
+}
 
 pub struct Bitmap {
     pub bitmaps: Vec<BitmapBitmap>,
