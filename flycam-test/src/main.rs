@@ -1,12 +1,13 @@
 use magellanicus::renderer::{AddBSPParameter, AddBSPParameterLightmapMaterial, AddBSPParameterLightmapSet, AddBitmapBitmapParameter, AddBitmapParameter, AddBitmapSequenceParameter, AddShaderBasicShaderData, AddShaderData, AddShaderParameter, AddSkyParameter, BSP3DNode, BSP3DNodeChild, BSP3DPlane, BSPCluster, BSPData, BSPLeaf, BitmapFormat, BitmapSprite, BitmapType, Renderer, RendererParameters, Resolution, SetDefaultBitmaps, ShaderType};
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard, Weak};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 use winit::application::ApplicationHandler;
 use winit::dpi::{PhysicalSize, Size};
-use winit::event::{StartCause, WindowEvent};
-use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
+use winit::event::WindowEvent;
+use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::window::{Window, WindowId};
 
 use clap::Parser;
@@ -103,13 +104,11 @@ fn main() -> Result<(), String> {
         renderer: None,
         window: None,
         scenario_data,
-        frame_time_counts: Vec::with_capacity(300),
-        last_frame: Instant::now(),
         viewports,
         camera_speed_multiplier: 1.0,
-        camera_velocity: [0.0, 0.0, 0.0]
+        camera_velocity: [0.0, 0.0, 0.0],
+        pause_rendering_flag: Arc::new(AtomicBool::new(false)),
     };
-    event_loop.set_control_flow(ControlFlow::Poll);
     event_loop.run_app(&mut handler).unwrap();
     Ok(())
 }
@@ -174,15 +173,14 @@ fn load_tags_from_cache(cache: &Path) -> Result<(TagPath, &'static Engine, HashM
 }
 
 pub struct FlycamTestHandler {
-    renderer: Option<Renderer>,
+    renderer: Option<Arc<Mutex<Renderer>>>,
     window: Option<Arc<Window>>,
     scenario_data: ScenarioData,
-    frame_time_counts: Vec<Duration>,
     viewports: usize,
+    pause_rendering_flag: Arc<AtomicBool>,
 
     camera_velocity: [f64; 3],
     camera_speed_multiplier: f64,
-    last_frame: Instant
 }
 
 impl ApplicationHandler for FlycamTestHandler {
@@ -203,41 +201,83 @@ impl ApplicationHandler for FlycamTestHandler {
         }, window.clone());
 
         match renderer {
-            Ok(r) => self.renderer = Some(r),
+            Ok(r) => self.renderer = Some(Arc::new(Mutex::new(r))),
             Err(e) => {
                 eprintln!("Failed to initialize renderer: {e}");
-                event_loop.exit();
-            }
-        }
-
-        if let Err(e) = self.load_bitmaps() {
-            eprintln!("ERROR LOADING BITMAPS: {e}");
-            return event_loop.exit();
-        }
-
-        if let Err(e) = self.load_shaders() {
-            eprintln!("ERROR LOADING shaders: {e}");
-            return event_loop.exit();
-        }
-
-        if let Err(e) = self.load_skies() {
-            eprintln!("ERROR LOADING skies: {e}");
-            return event_loop.exit();
-        }
-
-        if let Err(e) = self.load_bsps() {
-            eprintln!("ERROR: {e}");
-            return event_loop.exit();
-        }
-
-        if let Some(n) = self.scenario_data.scenario_tag.structure_bsps.items.first().and_then(|b| b.structure_bsp.path()) {
-            if let Err(e) = self.renderer.as_mut().unwrap().set_current_bsp(Some(&n.to_string())) {
-                eprintln!("ERROR: {e}");
                 return event_loop.exit();
             }
         }
 
-        let renderer = self.renderer.as_mut().unwrap();
+        if let Err(e) = self.initialize_and_start() {
+            eprintln!("{e}");
+            return event_loop.exit();
+        }
+    }
+
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
+        match event {
+            WindowEvent::CloseRequested => {
+                event_loop.exit();
+                return;
+            },
+            WindowEvent::Resized(new_size) => {
+                let mut lock = self.lock_renderer();
+                lock.renderer.rebuild_swapchain(RendererParameters {
+                    number_of_viewports: 1,
+                    vsync: false,
+                    resolution: Resolution { width: new_size.width, height: new_size.height }
+                }).unwrap();
+            },
+            WindowEvent::KeyboardInput {
+                event, ..
+            } => {
+                let is_pressed = event.state.is_pressed();
+
+            }
+            _ => ()
+        }
+    }
+}
+
+impl FlycamTestHandler {
+    fn lock_renderer(&self) -> PriorityLock {
+        while !self.pause_rendering_flag.swap(true, Ordering::Relaxed) {
+            continue;
+        }
+        let locked_renderer = self.renderer.as_ref().unwrap();
+        let renderer = locked_renderer.lock().unwrap();
+        let pause_rendering_flag = self.pause_rendering_flag.clone();
+        PriorityLock {
+            renderer,
+            pause_rendering_flag
+        }
+    }
+
+    fn initialize_and_start(&mut self) -> Result<(), String> {
+        if let Err(e) = self.load_bitmaps() {
+            return Err(format!("ERROR LOADING BITMAPS: {e}"))
+        }
+
+        if let Err(e) = self.load_shaders() {
+            return Err(format!("ERROR LOADING shaders: {e}"))
+        }
+
+        if let Err(e) = self.load_skies() {
+            return Err(format!("ERROR LOADING skies: {e}"))
+        }
+
+        if let Err(e) = self.load_bsps() {
+            return Err(format!("ERROR: {e}"))
+        }
+
+        if let Some(n) = self.scenario_data.scenario_tag.structure_bsps.items.first().and_then(|b| b.structure_bsp.path()) {
+            if let Err(e) = self.renderer.as_mut().unwrap().lock().unwrap().set_current_bsp(Some(&n.to_string())) {
+                return Err(format!("ERROR: {e}"))
+            }
+        }
+
+        let mut renderer = self.renderer.as_ref().unwrap().lock().unwrap();
+        let renderer = &mut *renderer;
 
         for (vi, location) in self.scenario_data
             .scenario_tag
@@ -262,88 +302,19 @@ impl ApplicationHandler for FlycamTestHandler {
         println!("  Engine: {}", self.scenario_data.engine.display_name);
         println!("  Type: {}", self.scenario_data.scenario_tag._type);
         println!("--------------------------------------------------------------------------------");
+
+        let render_ref = Arc::downgrade(self.renderer.as_ref().unwrap());
+        let pause_rendering_ref = self.pause_rendering_flag.clone();
+        std::thread::spawn(move || {
+            run_renderer_thread(render_ref, pause_rendering_ref);
+        });
+
+        Ok(())
     }
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
-        match event {
-            WindowEvent::CloseRequested => {
-                event_loop.exit();
-                return;
-            },
-            WindowEvent::KeyboardInput {
-                event, ..
-            } => {
-                let is_pressed = event.state.is_pressed();
-
-            }
-            _ => ()
-        }
-    }
-
-    fn new_events(&mut self, event_loop: &ActiveEventLoop, cause: StartCause) {
-        if cause == StartCause::Poll {
-            if let Some(renderer) = self.renderer.as_mut() {
-                let time_start = Instant::now();
-
-                if self.camera_velocity != [0.0,0.0,0.0] {
-                    let time_since_last_frame = time_start - self.last_frame;
-                    let seconds = time_since_last_frame.as_micros() as f64 / 1000000.0;
-
-                    let delta_x = self.camera_velocity[0] * seconds * self.camera_speed_multiplier;
-                    let delta_y = self.camera_velocity[1] * seconds * self.camera_speed_multiplier;
-                    let delta_z = self.camera_velocity[2] * seconds * self.camera_speed_multiplier;
-
-
-                }
-
-
-                self.last_frame = time_start;
-                match renderer.draw_frame() {
-                    Ok(n) => {
-                        if !n {
-                            let window = self.window.clone().unwrap();
-                            if let Err(e) = renderer.rebuild_swapchain(
-                                RendererParameters {
-                                    resolution: Resolution {
-                                        width: window.inner_size().width,
-                                        height: window.inner_size().height,
-                                    },
-                                    number_of_viewports: 1,
-                                    vsync: false
-                                }
-                            ) {
-                                eprintln!("Critical error rebuilding swapchain: {e}");
-                                event_loop.exit();
-                                return;
-                            }
-                        }
-                    },
-                    Err(e) => {
-                        eprintln!("Render fail: {e}");
-                    }
-                }
-                let time_end = Instant::now() - time_start;
-                self.frame_time_counts.push(time_end);
-                if self.frame_time_counts.len() == 200 {
-                    let mut time = 0u128;
-                    for t in &self.frame_time_counts {
-                        time = time.saturating_add(t.as_nanos());
-                    }
-
-                    let frames_per_second = (self.frame_time_counts.len() as f64) / (time as f64 / 1000000000.0);
-                    println!("FPS: {frames_per_second}");
-
-                    self.frame_time_counts.clear();
-                }
-                return
-            }
-        }
-    }
-}
-
-impl FlycamTestHandler {
     fn load_bitmaps(&mut self) -> Result<(), String> {
-        let renderer = self.renderer.as_mut().unwrap();
+        let mut renderer = self.renderer.as_mut().unwrap().lock().unwrap();
+        let renderer = &mut *renderer;
         let all_bitmaps = self.scenario_data
             .tags
             .iter()
@@ -471,7 +442,8 @@ impl FlycamTestHandler {
     }
 
     fn load_shaders(&mut self) -> Result<(), String> {
-        let renderer = self.renderer.as_mut().unwrap();
+        let mut renderer = self.renderer.as_mut().unwrap().lock().unwrap();
+        let renderer = &mut *renderer;
 
         let all_shaders = self.scenario_data
             .tags
@@ -606,7 +578,8 @@ impl FlycamTestHandler {
     }
 
     fn load_skies(&mut self) -> Result<(), String> {
-        let renderer = self.renderer.as_mut().unwrap();
+        let mut renderer = self.renderer.as_mut().unwrap().lock().unwrap();
+        let renderer = &mut *renderer;
 
         let all_skies = self.scenario_data
             .tags
@@ -635,7 +608,8 @@ impl FlycamTestHandler {
     }
 
     fn load_bsps(&mut self) -> Result<(), String> {
-        let renderer = self.renderer.as_mut().unwrap();
+        let mut renderer = self.renderer.as_mut().unwrap().lock().unwrap();
+        let renderer = &mut *renderer;
 
         let all_bsps = self.scenario_data
             .tags
@@ -746,5 +720,52 @@ impl FlycamTestHandler {
         }
 
         Ok(())
+    }
+}
+
+fn run_renderer_thread(renderer: Weak<Mutex<Renderer>>, pause_rendering: Arc<AtomicBool>) {
+    let mut time_start = Instant::now();
+    let mut frames_rendered = 0u64;
+    while let Some(renderer) = renderer.upgrade() {
+        if pause_rendering.load(Ordering::Relaxed) {
+            std::thread::sleep(Duration::from_millis(10));
+            continue;
+        }
+
+        let mut renderer = renderer.lock().unwrap();
+        let frame_result = renderer.draw_frame();
+        drop(renderer);
+
+        match frame_result {
+            Ok(n) => {
+                if !n {
+                    continue;
+                }
+            },
+            Err(e) => {
+                eprintln!("Render fail: {e}");
+                continue;
+            }
+        }
+
+        frames_rendered += 1;
+        let time_taken = Instant::now() - time_start;
+        if time_taken.as_secs() >= 1 {
+            let frames_per_second = (frames_rendered as f64) / (time_taken.as_micros() as f64 / 1000000.0);
+            println!("FPS: {frames_per_second}");
+            frames_rendered = 0;
+            time_start = Instant::now();
+        }
+    }
+}
+
+struct PriorityLock<'a> {
+    renderer: MutexGuard<'a, Renderer>,
+    pause_rendering_flag: Arc<AtomicBool>
+}
+
+impl Drop for PriorityLock<'_> {
+    fn drop(&mut self) {
+        self.pause_rendering_flag.swap(false, Ordering::Relaxed);
     }
 }

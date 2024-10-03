@@ -139,7 +139,7 @@ impl VulkanRenderer {
                 Err(e) => panic!("failed to acquire next image: {e}"),
             };
 
-        Ok(!suboptimal && Self::draw_frame_infallible(renderer, image_index, acquire_future))
+        Ok(Self::draw_frame_infallible(renderer, image_index, acquire_future) && !suboptimal)
     }
 
     pub fn rebuild_swapchain(&mut self, renderer_parameters: &RendererParameters) -> MResult<()> {
