@@ -12,7 +12,7 @@ use winit::window::{Window, WindowId};
 
 use clap::Parser;
 use magellanicus::vertex::{LightmapVertex, ModelTriangle, ModelVertex};
-use ringhopper::definitions::{Bitmap, BitmapDataFormat, Globals, Scenario, ScenarioStructureBSP, ShaderEnvironment, ShaderModel, ShaderTransparentChicago, ShaderTransparentChicagoExtended, ShaderTransparentGeneric, ShaderTransparentGlass, ShaderTransparentMeter, Sky, UnicodeStringList};
+use ringhopper::definitions::{Bitmap, BitmapDataFormat, BitmapDataType, Globals, Scenario, ScenarioStructureBSP, ShaderEnvironment, ShaderModel, ShaderTransparentChicago, ShaderTransparentChicagoExtended, ShaderTransparentGeneric, ShaderTransparentGlass, ShaderTransparentMeter, Sky, UnicodeStringList};
 use ringhopper::primitives::dynamic::DynamicTagDataArray;
 use ringhopper::primitives::engine::Engine;
 use ringhopper::primitives::primitive::{TagGroup, TagPath};
@@ -364,9 +364,9 @@ impl FlycamTestHandler {
                     };
                     let parameter = AddBitmapBitmapParameter {
                         format,
-                        bitmap_type: match bitmap._type {
-                            ringhopper::definitions::BitmapType::CubeMaps => BitmapType::Cubemap,
-                            ringhopper::definitions::BitmapType::_3dTextures => BitmapType::Dim3D { depth: b.depth as u32 },
+                        bitmap_type: match b._type {
+                            BitmapDataType::CubeMap => BitmapType::Cubemap,
+                            BitmapDataType::_3dTexture => BitmapType::Dim3D { depth: b.depth as u32 },
                             _ => BitmapType::Dim2D
                         },
                         resolution: Resolution { width: b.width as u32, height: b.height as u32 },
