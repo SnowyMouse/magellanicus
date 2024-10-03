@@ -249,41 +249,23 @@ impl VulkanRenderer {
             for geometry in &currently_loaded_bsp.geometries {
                 let shader = renderer.shaders.get(&geometry.vulkan.shader).expect("no shader?");
                 let vulkan_shader = &shader.vulkan;
-                let stages = vulkan_shader.pipeline_data.get_stages();
 
                 command_builder.bind_index_buffer(geometry.vulkan.index_buffer.clone()).expect("can't bind indices");
-                let mut currently_bound_thing = None;
-
-                for (index, stage) in stages.iter().enumerate() {
-                    let tcoords_type = Some(vulkan_shader.pipeline_data.get_texture_coords_type(renderer, index));
-                    if tcoords_type != currently_bound_thing {
-                        command_builder.bind_vertex_buffers(0, (
-                            geometry.vulkan.vertex_buffer.clone(),
-                            match tcoords_type.unwrap() {
-                                VulkanMaterialTextureCoordsType::Model => {
-                                    geometry.vulkan.texture_coords_buffer.clone()
-                                },
-                                VulkanMaterialTextureCoordsType::Lightmaps => {
-                                    if geometry.vulkan.lightmap_texture_coords_buffer.is_none() {
-                                        continue
-                                    }
-                                    geometry.vulkan.lightmap_texture_coords_buffer.clone().unwrap()
-                                }
-                            }
-                        ));
+                command_builder.bind_vertex_buffers(0, (
+                    geometry.vulkan.vertex_buffer.clone(),
+                    geometry.vulkan.texture_coords_buffer.clone(),
+                    if geometry.vulkan.lightmap_texture_coords_buffer.is_none() {
+                        geometry.vulkan.texture_coords_buffer.clone()
                     }
+                    else {
+                        geometry.vulkan.lightmap_texture_coords_buffer.clone().unwrap()
+                    }
+                ));
 
-                    command_builder.set_cull_mode(CullMode::Back).unwrap();
-
-                    vulkan_shader
-                        .pipeline_data
-                        .generate_stage_commands(renderer, index, &mut command_builder)
-                        .expect("can't generate stage commands");
-
-                    command_builder
-                        .draw_indexed(geometry.vulkan.index_buffer.len() as u32, 1, 0, 0, 0)
-                        .expect("can't draw");
-                }
+                vulkan_shader
+                    .pipeline_data
+                    .generate_commands(renderer, geometry.vulkan.index_buffer.len() as u32, &mut command_builder)
+                    .expect("can't generate stage commands");
             }
         }
 

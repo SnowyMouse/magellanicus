@@ -228,12 +228,6 @@ impl ApplicationHandler for FlycamTestHandler {
                     resolution: Resolution { width: new_size.width, height: new_size.height }
                 }).unwrap();
             },
-            WindowEvent::KeyboardInput {
-                event, ..
-            } => {
-                let is_pressed = event.state.is_pressed();
-
-            }
             _ => ()
         }
     }

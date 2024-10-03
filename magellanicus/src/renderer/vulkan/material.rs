@@ -37,22 +37,10 @@ pub enum VulkanMaterialTextureCoordsType {
 }
 
 pub trait VulkanMaterial: Send + Sync + 'static {
-    /// Get all stages for the shader.
-    fn get_stages(&self) -> &[VulkanMaterialShaderStage];
-
-    /// Execute the stage.
+    /// Generate rendering commands.
     ///
-    /// # Panics
-    ///
-    /// Panics if `stage >= self.get_stages().len()`
-    fn generate_stage_commands(&self, renderer: &Renderer, stage: usize, to: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>) -> MResult<()>;
-
-    /// Get the texture coords type that needs to be bound.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `stage >= self.get_stages().len()`
-    fn get_texture_coords_type(&self, renderer: &Renderer, stage: usize) -> VulkanMaterialTextureCoordsType;
+    /// All vertex buffers (vertices, texture coords, lightmap texture coords) must be bound!
+    fn generate_commands(&self, renderer: &Renderer, index_count: u32, to: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>) -> MResult<()>;
 
     /// Return `true` if the material is transparent.
     ///
@@ -60,15 +48,6 @@ pub trait VulkanMaterial: Send + Sync + 'static {
     ///
     /// Default: `false`
     fn is_transparent(&self) -> bool {
-        false
-    }
-
-    /// Return `true` if the material is two-sided.
-    ///
-    /// If so, depth sorting needs to be disabled when rendering.
-    ///
-    /// Default: `false`
-    fn is_two_sided(&self) -> bool {
         false
     }
 }
