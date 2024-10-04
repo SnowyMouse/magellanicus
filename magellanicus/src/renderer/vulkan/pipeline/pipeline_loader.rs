@@ -1,21 +1,20 @@
-use vulkano::device::Device;
-use vulkano::pipeline::graphics::vertex_input::{Vertex, VertexBufferDescription, VertexDefinition};
-use vulkano::pipeline::{DynamicState, GraphicsPipeline, Pipeline, PipelineLayout, PipelineShaderStageCreateInfo};
+use crate::error::MResult;
 use std::sync::Arc;
-use std::{println, vec};
 use std::vec::Vec;
+use std::vec;
+use vulkano::device::Device;
 use vulkano::format::Format;
 use vulkano::pipeline::graphics::color_blend::{AttachmentBlend, ColorBlendAttachmentState, ColorBlendState};
 use vulkano::pipeline::graphics::depth_stencil::{CompareOp, DepthState, DepthStencilState};
-use vulkano::pipeline::graphics::GraphicsPipelineCreateInfo;
 use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
 use vulkano::pipeline::graphics::multisample::MultisampleState;
-use vulkano::pipeline::graphics::rasterization::{CullMode, FrontFace, RasterizationState};
+use vulkano::pipeline::graphics::rasterization::{FrontFace, RasterizationState};
 use vulkano::pipeline::graphics::subpass::PipelineRenderingCreateInfo;
+use vulkano::pipeline::graphics::vertex_input::{VertexBufferDescription, VertexDefinition};
 use vulkano::pipeline::graphics::viewport::ViewportState;
+use vulkano::pipeline::graphics::GraphicsPipelineCreateInfo;
 use vulkano::pipeline::layout::PipelineDescriptorSetLayoutCreateInfo;
-use crate::error::MResult;
-use crate::renderer::vulkan::vertex::*;
+use vulkano::pipeline::{DynamicState, GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo};
 
 #[derive(Copy, Clone, Default, PartialEq)]
 pub enum DepthAccess {

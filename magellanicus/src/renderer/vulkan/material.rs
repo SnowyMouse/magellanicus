@@ -1,12 +1,10 @@
 mod simple_shader;
 
-use std::sync::Arc;
-use vulkano::command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer, SecondaryAutoCommandBuffer};
 use crate::error::MResult;
-use crate::renderer::{AddShaderData, AddShaderParameter, Renderer};
-use crate::renderer::vulkan::{VulkanPipelineData, VulkanRenderer};
 use crate::renderer::vulkan::material::simple_shader::VulkanSimpleShaderMaterial;
-use crate::renderer::vulkan::vertex::VulkanModelData;
+use crate::renderer::{AddShaderData, AddShaderParameter, Renderer};
+use std::sync::Arc;
+use vulkano::command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer};
 
 pub struct VulkanMaterialShaderData {
     pub pipeline_data: Arc<dyn VulkanMaterial>

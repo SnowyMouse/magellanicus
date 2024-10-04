@@ -1,19 +1,16 @@
 use crate::error::MResult;
 use crate::renderer::{AddBSPParameter, AddBSPParameterLightmapMaterial, Renderer};
 
-use std::boxed::Box;
-use std::collections::BTreeMap;
-use std::ops::Range;
-use std::println;
-use std::sync::Arc;
-use std::string::String;
-use std::vec::Vec;
-use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage, IndexBuffer, Subbuffer};
-use vulkano::image::sampler::{Sampler, SamplerCreateInfo};
-use vulkano::image::view::{ImageView, ImageViewCreateInfo};
 use crate::renderer::vulkan::default_allocation_create_info;
 use crate::renderer::vulkan::vertex::{VulkanModelVertex, VulkanModelVertexTextureCoords};
-use crate::vertex::{LightmapVertex, ModelTriangle, ModelVertex};
+use crate::vertex::ModelTriangle;
+use std::collections::BTreeMap;
+use std::string::String;
+use std::sync::Arc;
+use std::vec::Vec;
+use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer};
+use vulkano::image::sampler::{Sampler, SamplerCreateInfo};
+use vulkano::image::view::{ImageView, ImageViewCreateInfo};
 
 #[derive(Default)]
 pub struct VulkanBSPData {
@@ -27,7 +24,7 @@ impl VulkanBSPData {
         if let Some(n) = &param.lightmap_bitmap {
             let image = renderer
                 .bitmaps
-                .get(param.lightmap_bitmap.as_ref().unwrap())
+                .get(n)
                 .unwrap();
 
             for i in param.lightmap_sets.iter().filter_map(|b| b.lightmap_index) {
@@ -96,7 +93,7 @@ pub struct VulkanBSPGeometryData {
 }
 
 impl VulkanBSPGeometryData {
-    pub fn new(renderer: &mut Renderer, param: &AddBSPParameter, material: &AddBSPParameterLightmapMaterial, lightmap_index: Option<usize>) -> MResult<Self> {
+    pub fn new(renderer: &mut Renderer, _param: &AddBSPParameter, material: &AddBSPParameterLightmapMaterial, lightmap_index: Option<usize>) -> MResult<Self> {
         let vertex_buffer = Buffer::from_iter(
             renderer.renderer.memory_allocator.clone(),
             BufferCreateInfo { usage: BufferUsage::VERTEX_BUFFER, ..Default::default() },

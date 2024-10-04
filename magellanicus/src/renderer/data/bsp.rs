@@ -1,9 +1,9 @@
+use crate::error::MResult;
+use crate::renderer::vulkan::{VulkanBSPData, VulkanBSPGeometryData};
+use crate::renderer::{AddBSPParameter, AddBSPParameterLightmapMaterial, BSPData, Renderer};
+use crate::vertex::ModelTriangle;
 use alloc::vec::Vec;
 use core::ops::Range;
-use crate::error::MResult;
-use crate::renderer::{AddBSPParameter, AddBSPParameterLightmapMaterial, AddShaderParameter, BSPCluster, BSPData, BSPPortal, Renderer};
-use crate::renderer::vulkan::{VulkanBSPData, VulkanBSPGeometryData};
-use crate::vertex::ModelTriangle;
 
 #[derive(Default)]
 pub struct BSP {
@@ -55,7 +55,7 @@ impl BSP {
             })
         }
 
-        let mut bsp_data = &mut add_bsp_parameter.bsp_data;
+        let bsp_data = &mut add_bsp_parameter.bsp_data;
         let mut cluster_surfaces: Vec<Vec<usize>> = Vec::with_capacity(bsp_data.clusters.len());
 
         // Get all surfaces for all clusters
@@ -65,7 +65,7 @@ impl BSP {
                 subcluster.surface_indices.dedup();
             }
 
-            let mut all_surfaces_iter = cluster
+            let all_surfaces_iter = cluster
                 .subclusters
                 .iter()
                 .map(|c| c.surface_indices.iter())

@@ -1,23 +1,16 @@
-use std::sync::Arc;
-use std::borrow::ToOwned;
-use std::string::ToString;
-use std::{eprintln, println, vec};
-use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage};
-use vulkano::command_buffer::allocator::CommandBufferAllocator;
-use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferInheritanceInfo, CommandBufferInheritanceRenderPassType, CommandBufferInheritanceRenderingInfo, CommandBufferUsage, PrimaryAutoCommandBuffer, SecondaryAutoCommandBuffer};
-use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
-use vulkano::format::Format;
-use vulkano::image::{Image, ImageAspects, ImageSubresourceRange, ImageType};
-use vulkano::image::sampler::{ComponentMapping, ComponentSwizzle, Sampler, SamplerCreateInfo};
-use vulkano::image::view::{ImageView, ImageViewCreateInfo};
-use vulkano::padded::Padded;
-use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
-use vulkano::pipeline::graphics::rasterization::CullMode;
 use crate::error::{Error, MResult};
+use crate::renderer::vulkan::{VulkanMaterial, VulkanPipelineType};
 use crate::renderer::{AddShaderBasicShaderData, Renderer};
-use crate::renderer::vulkan::{default_allocation_create_info, VulkanMaterial, VulkanMaterialShaderData, VulkanMaterialShaderStage, VulkanMaterialTextureCoordsType, VulkanPipelineData, VulkanPipelineType, VulkanRenderer};
-use crate::renderer::vulkan::simple_texture::ModelData;
-use crate::renderer::vulkan::vertex::{VulkanModelData, VulkanModelVertex};
+use std::string::ToString;
+use std::sync::Arc;
+use std::eprintln;
+use vulkano::command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer};
+use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
+use vulkano::image::sampler::{Sampler, SamplerCreateInfo};
+use vulkano::image::view::{ImageView, ImageViewCreateInfo};
+use vulkano::image::{ImageAspects, ImageSubresourceRange, ImageType};
+use vulkano::pipeline::graphics::rasterization::CullMode;
+use vulkano::pipeline::{Pipeline, PipelineBindPoint};
 
 pub struct VulkanSimpleShaderMaterial {
     diffuse: Arc<ImageView>,
@@ -71,7 +64,7 @@ impl VulkanMaterial for VulkanSimpleShaderMaterial {
         to: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>
     ) -> MResult<()> {
         to.bind_pipeline_graphics(renderer.renderer.pipelines[&VulkanPipelineType::SimpleTexture].get_pipeline())?;
-        to.set_cull_mode(CullMode::Back);
+        to.set_cull_mode(CullMode::Back).unwrap();
 
         let pipeline = renderer.renderer.pipelines[&VulkanPipelineType::SimpleTexture].get_pipeline();
         let set = PersistentDescriptorSet::new(
@@ -89,9 +82,9 @@ impl VulkanMaterial for VulkanSimpleShaderMaterial {
             pipeline.layout().clone(),
             1,
             set
-        );
+        ).unwrap();
 
-        to.draw_indexed(index_count, 1, 0, 0, 0)?;
+        to.draw_indexed(index_count, 1, 0, 0, 0).unwrap();
 
         Ok(())
     }

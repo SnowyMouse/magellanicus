@@ -1,7 +1,6 @@
+use alloc::fmt::Display;
 use alloc::string::String;
-use alloc::fmt::{Write, Display};
-use core::fmt::{Arguments, Formatter};
-use std::format;
+use core::fmt::Formatter;
 
 /// General Result type
 pub type MResult<T> = Result<T, Error>;

@@ -1,20 +1,17 @@
-use std::{format, println};
-use std::num::NonZeroUsize;
-use vulkano::image::{Image, ImageAspects, ImageCreateInfo, ImageSubresourceLayers, ImageTiling, ImageType, ImageUsage};
-use vulkano::memory::allocator::{AllocationCreateInfo, MemoryAllocatePreference, MemoryTypeFilter};
 use crate::error::{Error, MResult};
-use crate::renderer::{AddBitmapBitmapParameter, BitmapFormat, BitmapType, Renderer};
+use crate::renderer::mipmap_iterator::{MipmapTextureIterator, MipmapType};
 use crate::renderer::vulkan::{default_allocation_create_info, VulkanRenderer};
-use std::vec::Vec;
-use std::sync::Arc;
-use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage};
-use vulkano::DeviceSize;
-use vulkano::format::Format;
+use crate::renderer::{AddBitmapBitmapParameter, BitmapFormat, BitmapType};
+use std::num::NonZeroUsize;
 use std::string::ToString;
-use vulkano::command_buffer::allocator::CommandBufferAllocator;
-use vulkano::command_buffer::{AutoCommandBufferBuilder, BufferImageCopy, CommandBufferUsage, CopyBufferToImageInfo, PrimaryCommandBufferAbstract};
-use vulkano::sync::GpuFuture;
-use crate::renderer::mipmap_iterator::{MipmapFaceIterator, MipmapTextureIterator, MipmapType};
+use std::sync::Arc;
+use std::vec::Vec;
+use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage};
+use vulkano::command_buffer::{AutoCommandBufferBuilder, BufferImageCopy, CommandBufferUsage, CopyBufferToImageInfo};
+use vulkano::format::Format;
+use vulkano::image::{Image, ImageAspects, ImageCreateInfo, ImageSubresourceLayers, ImageType, ImageUsage};
+use vulkano::memory::allocator::{AllocationCreateInfo, MemoryAllocatePreference, MemoryTypeFilter};
+use vulkano::DeviceSize;
 
 pub struct VulkanBitmapData {
     pub image: Arc<Image>

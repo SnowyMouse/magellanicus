@@ -2,9 +2,8 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use vulkano::device::Device;
 use vulkano::format::Format;
-use vulkano::pipeline::{GraphicsPipeline, Pipeline};
+use vulkano::pipeline::GraphicsPipeline;
 use crate::error::MResult;
-use crate::renderer::vulkan::pipeline::pipeline_loader::load_pipeline;
 
 pub mod solid_color;
 pub mod simple_texture;

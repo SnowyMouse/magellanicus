@@ -1,13 +1,13 @@
+use crate::error::MResult;
+use crate::renderer::vulkan::pipeline::pipeline_loader::{load_pipeline, DepthAccess, PipelineSettings};
+use crate::renderer::vulkan::vertex::VulkanModelVertex;
+use crate::renderer::vulkan::VulkanPipelineData;
 use std::sync::Arc;
 use std::vec;
 use vulkano::device::Device;
 use vulkano::format::Format;
 use vulkano::pipeline::graphics::vertex_input::Vertex;
 use vulkano::pipeline::GraphicsPipeline;
-use crate::error::MResult;
-use crate::renderer::vulkan::pipeline::pipeline_loader::{load_pipeline, DepthAccess, PipelineSettings};
-use crate::renderer::vulkan::vertex::{VulkanModelVertex, VulkanModelVertexTextureCoords};
-use crate::renderer::vulkan::VulkanPipelineData;
 
 mod vertex {
     vulkano_shaders::shader! {
@@ -29,8 +29,6 @@ pub struct ColorBox {
 
 impl ColorBox {
     pub fn new(device: Arc<Device>, color_format: Format) -> MResult<Self> {
-        use vulkano::pipeline::Pipeline;
-
         let pipeline = load_pipeline(device, vertex::load, fragment::load, &PipelineSettings {
             depth_access: DepthAccess::NoDepth,
             vertex_buffer_descriptions: vec![VulkanModelVertex::per_vertex()],

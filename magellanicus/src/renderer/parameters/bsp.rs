@@ -3,7 +3,7 @@ use alloc::string::String;
 use alloc::format;
 use alloc::borrow::ToOwned;
 use alloc::vec;
-use glam::{Vec3, Vec4};
+use glam::Vec3;
 use crate::error::{Error, MResult};
 use crate::renderer::data::{Bitmap, Shader, ShaderType};
 use crate::renderer::Renderer;
@@ -216,7 +216,7 @@ impl BSPData {
         }
 
         let mut tested_nodes = alloc::vec![false; self.nodes.len()];
-        for (index, node) in self.nodes.iter().enumerate() {
+        for (index, _node) in self.nodes.iter().enumerate() {
             self.validate_3d_node(index, self.nodes.len() + 3, &mut tested_nodes)?;
         }
         for (index, leaf) in self.leaves.iter().enumerate() {
@@ -244,7 +244,7 @@ impl BSPData {
                     return Err(Error::from_data_error_string(format!("Subcluster {sc_index} of cluster #{index} points to an out-of-bounds surface (there are {total_surface_count} surfaces)")))
                 }
             }
-            for (p_index, portal) in cluster.cluster_portals.iter().enumerate() {
+            for (p_index, _portal) in cluster.cluster_portals.iter().enumerate() {
                 if p_index >= self.portals.len() {
                     return Err(Error::from_data_error_string(format!("Portal {p_index} of cluster #{index} points to an out-of-bounds portal (there are {} surfaces)", self.portals.len())))
                 }
@@ -275,11 +275,11 @@ impl BSPData {
         let back_child = node_data.back_child;
 
         if let Some(front) = front_child {
-            self.validate_child(node, front, remaining_tests, nodes_tested);
+            self.validate_child(node, front, remaining_tests, nodes_tested)?;
         }
 
         if let Some(back) = back_child {
-            self.validate_child(node, back, remaining_tests, nodes_tested);
+            self.validate_child(node, back, remaining_tests, nodes_tested)?;
         }
 
         nodes_tested[node] = true;
@@ -287,7 +287,7 @@ impl BSPData {
     }
 
     #[inline(always)]
-    fn validate_child(&self, node: usize, child: BSP3DNodeChild, mut remaining_tests: usize, nodes_tested: &mut [bool]) -> MResult<()> {
+    fn validate_child(&self, node: usize, child: BSP3DNodeChild, remaining_tests: usize, nodes_tested: &mut [bool]) -> MResult<()> {
         match child {
             BSP3DNodeChild::Node(n) => {
                 if n >= self.nodes.len() {

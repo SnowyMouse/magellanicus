@@ -1,5 +1,4 @@
 use glam::Vec3;
-use crate::renderer::vulkan::VulkanPlayerViewport;
 
 #[derive(Copy, Clone, Debug)]
 pub struct PlayerViewport {

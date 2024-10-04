@@ -1,6 +1,5 @@
 use alloc::sync::Arc;
 use alloc::string::String;
-use crate::renderer::Renderer;
 
 pub struct Sky {
     pub geometry: Option<Arc<String>>,

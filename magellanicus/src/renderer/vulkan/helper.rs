@@ -1,17 +1,16 @@
-use std::string::{String, ToString};
-use std::sync::Arc;
-use std::println;
-use std::vec::Vec;
+use crate::error::{Error, MResult};
+use crate::renderer::RendererParameters;
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
-use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, Features, Queue, QueueCreateInfo, QueueFlags};
+use std::string::ToString;
+use std::sync::Arc;
+use std::vec::Vec;
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
-use vulkano::instance::{Instance, InstanceCreateInfo, InstanceExtensions};
-use vulkano::swapchain::{PresentMode, Surface, Swapchain, SwapchainCreateInfo};
-use vulkano::{Validated, Version, VulkanError, VulkanLibrary};
+use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, Features, Queue, QueueCreateInfo, QueueFlags};
 use vulkano::format::Format;
 use vulkano::image::{Image, ImageUsage};
-use crate::error::{Error, MResult};
-use crate::renderer::{RendererParameters, Resolution};
+use vulkano::instance::{Instance, InstanceCreateInfo};
+use vulkano::swapchain::{PresentMode, Surface, Swapchain, SwapchainCreateInfo};
+use vulkano::{Validated, Version, VulkanError, VulkanLibrary};
 
 pub struct LoadedVulkan {
     pub instance: Arc<Instance>,
@@ -23,8 +22,8 @@ pub struct LoadedVulkan {
 pub fn load_vulkan_and_get_queue(surface: Arc<impl HasRawWindowHandle + HasRawDisplayHandle + Send + Sync + 'static>) -> MResult<LoadedVulkan> {
     let library = VulkanLibrary::new()?;
 
-    let mut enabled_extensions = Surface::required_extensions(surface.as_ref());
-    let mut device_extensions_13 = DeviceExtensions {
+    let enabled_extensions = Surface::required_extensions(surface.as_ref());
+    let device_extensions_13 = DeviceExtensions {
         khr_swapchain: true,
         ..DeviceExtensions::empty()
     };
@@ -45,7 +44,7 @@ pub fn load_vulkan_and_get_queue(surface: Arc<impl HasRawWindowHandle + HasRawDi
         ..Default::default()
     })?;
 
-    let mut surface = Surface::from_window(instance.clone(), surface.clone())?;
+    let surface = Surface::from_window(instance.clone(), surface.clone())?;
 
     let (physical_device, queue_family_index, device_extensions) = find_best_gpu(
         instance.clone(),

@@ -1,6 +1,6 @@
 use crate::error::MResult;
-use crate::renderer::{AddShaderBasicShaderData, AddShaderData, AddShaderParameter, Renderer};
-use crate::renderer::vulkan::{VulkanRenderer, VulkanMaterialShaderData};
+use crate::renderer::vulkan::VulkanMaterialShaderData;
+use crate::renderer::{AddShaderData, AddShaderParameter, Renderer};
 
 pub struct Shader {
     pub vulkan: VulkanMaterialShaderData,

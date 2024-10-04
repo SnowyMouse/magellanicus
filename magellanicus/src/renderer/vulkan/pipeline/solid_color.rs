@@ -1,23 +1,13 @@
-use alloc::string::String;
-use alloc::sync::Arc;
-use vulkano::device::Device;
-use alloc::string::ToString;
-use std::vec;
-use vulkano::format::Format;
-use vulkano::pipeline::{DynamicState, GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo};
-use vulkano::pipeline::graphics::color_blend::{ColorBlendAttachmentState, ColorBlendState};
-use vulkano::pipeline::graphics::GraphicsPipelineCreateInfo;
-use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
-use vulkano::pipeline::graphics::multisample::MultisampleState;
-use vulkano::pipeline::graphics::rasterization::{CullMode, FrontFace, RasterizationState};
-use vulkano::pipeline::graphics::subpass::PipelineRenderingCreateInfo;
-use vulkano::pipeline::graphics::vertex_input::{Vertex, VertexDefinition};
-use vulkano::pipeline::graphics::viewport::ViewportState;
-use vulkano::pipeline::layout::PipelineDescriptorSetLayoutCreateInfo;
 use crate::error::MResult;
 use crate::renderer::vulkan::pipeline::pipeline_loader::{load_pipeline, DepthAccess, PipelineSettings};
-use crate::renderer::vulkan::vertex::{VulkanModelVertex, VulkanModelVertexTextureCoords};
+use crate::renderer::vulkan::vertex::VulkanModelVertex;
 use crate::renderer::vulkan::VulkanPipelineData;
+use alloc::sync::Arc;
+use std::vec;
+use vulkano::device::Device;
+use vulkano::format::Format;
+use vulkano::pipeline::graphics::vertex_input::Vertex;
+use vulkano::pipeline::GraphicsPipeline;
 
 mod vertex {
     vulkano_shaders::shader! {
@@ -32,8 +22,6 @@ mod fragment {
         path: "src/renderer/vulkan/pipeline/solid_color/fragment.frag"
     }
 }
-
-pub use vertex::ModelData;
 
 pub struct SolidColorShader {
     pub pipeline: Arc<GraphicsPipeline>

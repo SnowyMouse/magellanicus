@@ -5,7 +5,6 @@ use alloc::vec::Vec;
 use alloc::format;
 use alloc::vec;
 use alloc::borrow::ToOwned;
-use std::println;
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use data::*;
 
@@ -107,8 +106,8 @@ impl Renderer {
             n => return Err(Error::DataError { error: format!("number of viewports was set to {n}, but only 1-4 are supported") })
         }
 
-        let mut result = Self {
-            renderer: VulkanRenderer::new(&parameters, surface.clone(), parameters.resolution)?,
+        let result = Self {
+            renderer: VulkanRenderer::new(&parameters, surface.clone())?,
             player_viewports,
             bitmaps: BTreeMap::new(),
             shaders: BTreeMap::new(),
@@ -183,6 +182,7 @@ impl Renderer {
     /// - `geometry` is invalid
     /// - `geometry` contains invalid dependencies
     /// - replacing a geometry would break any dependencies
+    #[allow(unused_variables)]
     pub fn add_geometry(&mut self, path: &str, geometry: AddGeometryParameter) -> MResult<()> {
         todo!()
     }

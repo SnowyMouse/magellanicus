@@ -1,5 +1,5 @@
 #![no_std]
-#![allow(unused)]
+#![allow(dead_code)]
 
 // crate `std` is needed for the Vulkano crate (and thus the vulkan module), but nothing else
 extern crate std;

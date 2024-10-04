@@ -1,7 +1,6 @@
 //! Ported from Ringhopper
 
 use core::num::NonZeroUsize;
-use crate::error::MResult;
 
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub struct MipmapMetadata {

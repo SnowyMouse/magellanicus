@@ -1,4 +1,4 @@
-use alloc::string::{String, ToString};
+use alloc::string::String;
 
 mod bitmap;
 mod geometry;
@@ -10,47 +10,43 @@ mod player_viewport;
 mod vertex;
 mod material;
 
-use std::sync::Arc;
-use std::{eprintln, format, vec};
-use std::fmt::{Debug, Display};
-use std::println;
-use std::boxed::Box;
-use std::collections::{BTreeMap, BTreeSet, HashSet};
-use std::time::Instant;
-use std::vec::Vec;
-use glam::{Mat3, Mat4, Vec3};
-use raw_window_handle::{HasDisplayHandle, HasRawDisplayHandle, HasRawWindowHandle};
-use vulkano::command_buffer::allocator::{CommandBufferAllocator, StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo};
-use vulkano::descriptor_set::allocator::{StandardDescriptorSetAllocator, StandardDescriptorSetAllocatorCreateInfo};
-use vulkano::device::{Device, DeviceExtensions, Queue};
-use vulkano::instance::{Instance, InstanceCreateInfo, InstanceExtensions};
-use vulkano::memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator};
-use vulkano::swapchain::{acquire_next_image, Surface, Swapchain, SwapchainAcquireFuture, SwapchainCreateInfo, SwapchainPresentInfo};
-use vulkano::{Validated, ValidationError, Version, VulkanError, VulkanLibrary};
-use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage};
-use vulkano::command_buffer::{AutoCommandBufferBuilder, ClearColorImageInfo, CommandBufferInheritanceInfo, CommandBufferInheritanceRenderPassType, CommandBufferInheritanceRenderingInfo, CommandBufferUsage, PrimaryAutoCommandBuffer, PrimaryCommandBufferAbstract, RenderingAttachmentInfo, RenderingInfo, SecondaryAutoCommandBuffer, SubpassContents};
-use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
-use vulkano::format::Format;
-use vulkano::image::{Image, ImageCreateInfo, ImageType, ImageUsage};
-use vulkano::image::view::ImageView;
-use vulkano::padded::Padded;
-use vulkano::pipeline::graphics::rasterization::CullMode;
-use vulkano::pipeline::graphics::viewport::Viewport;
-use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
-use vulkano::render_pass::{AttachmentLoadOp, AttachmentStoreOp};
-use vulkano::sync::GpuFuture;
-pub use bitmap::*;
-pub use geometry::*;
-pub use pipeline::*;
-pub use bsp::*;
-pub use sky::*;
-pub use material::*;
-pub use player_viewport::*;
 use crate::error::{Error, MResult};
-use crate::renderer::{Renderer, RendererParameters, Resolution};
 use crate::renderer::data::BSP;
 use crate::renderer::vulkan::helper::{build_swapchain, LoadedVulkan};
 use crate::renderer::vulkan::vertex::{VulkanModelData, VulkanModelVertex};
+use crate::renderer::{Renderer, RendererParameters, Resolution};
+pub use bitmap::*;
+pub use bsp::*;
+pub use geometry::*;
+use glam::{Mat3, Mat4, Vec3};
+pub use material::*;
+pub use pipeline::*;
+use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
+use std::boxed::Box;
+use std::collections::BTreeMap;
+use std::fmt::Display;
+use std::sync::Arc;
+use std::vec::Vec;
+use std::{eprintln, format, vec};
+use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage};
+use vulkano::command_buffer::allocator::{StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo};
+use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferInheritanceInfo, CommandBufferInheritanceRenderPassType, CommandBufferInheritanceRenderingInfo, CommandBufferUsage, PrimaryAutoCommandBuffer, PrimaryCommandBufferAbstract, RenderingAttachmentInfo, RenderingInfo, SecondaryAutoCommandBuffer};
+use vulkano::descriptor_set::allocator::{StandardDescriptorSetAllocator, StandardDescriptorSetAllocatorCreateInfo};
+use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
+use vulkano::device::{Device, Queue};
+use vulkano::format::Format;
+use vulkano::image::view::ImageView;
+use vulkano::image::{Image, ImageCreateInfo, ImageType, ImageUsage};
+use vulkano::instance::Instance;
+use vulkano::memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator};
+use vulkano::padded::Padded;
+use vulkano::pipeline::graphics::rasterization::CullMode;
+use vulkano::pipeline::graphics::viewport::Viewport;
+use vulkano::pipeline::{Pipeline, PipelineBindPoint};
+use vulkano::render_pass::{AttachmentLoadOp, AttachmentStoreOp};
+use vulkano::swapchain::{acquire_next_image, Surface, Swapchain, SwapchainAcquireFuture, SwapchainCreateInfo, SwapchainPresentInfo};
+use vulkano::sync::GpuFuture;
+use vulkano::{Validated, ValidationError, VulkanError};
 
 pub struct VulkanRenderer {
     current_resolution: Resolution,
@@ -72,8 +68,7 @@ pub struct VulkanRenderer {
 impl VulkanRenderer {
     pub fn new(
         renderer_parameters: &RendererParameters,
-        surface: Arc<impl HasRawWindowHandle + HasRawDisplayHandle + Send + Sync + 'static>,
-        resolution: Resolution
+        surface: Arc<impl HasRawWindowHandle + HasRawDisplayHandle + Send + Sync + 'static>
     ) -> MResult<Self> {
         let LoadedVulkan { device, instance, surface, queue} = helper::load_vulkan_and_get_queue(surface)?;
 
@@ -172,7 +167,7 @@ impl VulkanRenderer {
             CommandBufferUsage::OneTimeSubmit
         ).expect("failed to init command builder");
 
-        let (color_view) = renderer.renderer.swapchain_image_views[image_index as usize].clone();
+        let color_view = renderer.renderer.swapchain_image_views[image_index as usize].clone();
 
         let depth_image = Image::new(
             renderer.renderer.memory_allocator.clone(),
@@ -228,7 +223,7 @@ impl VulkanRenderer {
                 Vec3::new(0.0, 0.0, -1.0)
             );
 
-            command_builder.set_viewport(0, [viewport].into_iter().collect());
+            command_builder.set_viewport(0, [viewport].into_iter().collect()).unwrap();
             command_builder.set_cull_mode(CullMode::None).unwrap();
 
             let cluster_index = currently_loaded_bsp.bsp_data.find_cluster(i.camera.position);
@@ -245,7 +240,7 @@ impl VulkanRenderer {
                     1.0,
                     [sky.outdoor_fog_color[0], sky.outdoor_fog_color[1], sky.outdoor_fog_color[2], 1.0],
                     &mut command_builder
-                );
+                ).unwrap();
             };
 
             upload_mvp_data(renderer, Vec3::default(), Mat3::IDENTITY, view, proj, &mut command_builder);
@@ -266,7 +261,7 @@ impl VulkanRenderer {
                     else {
                         geometry.vulkan.lightmap_texture_coords_buffer.clone().unwrap()
                     }
-                ));
+                )).unwrap();
 
                 vulkan_shader
                     .pipeline_data
@@ -310,7 +305,7 @@ impl VulkanRenderer {
         }
     }
 
-    fn draw_split_screen_bars(renderer: &mut Renderer, mut command_builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>, width: f32, height: f32) {
+    fn draw_split_screen_bars(renderer: &mut Renderer, command_builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>, width: f32, height: f32) {
         if renderer.player_viewports.len() <= 1 {
             return;
         }
@@ -321,14 +316,14 @@ impl VulkanRenderer {
             extent: [width, height],
             depth_range: 0.0..=1.0,
         };
-        command_builder.set_viewport(0, [viewport].into_iter().collect());
+        command_builder.set_viewport(0, [viewport].into_iter().collect()).unwrap();
 
         let base_thickness = 2.0;
         let scale = (width / 640.0).min(height / 480.0).max(1.0);
         let line_thickness_horizontal = base_thickness / height * scale;
         let line_thickness_vertical = base_thickness / width * scale;
 
-        draw_box(renderer, 0.0, 0.5 - line_thickness_horizontal / 2.0, 1.0, line_thickness_horizontal, color, &mut command_builder)
+        draw_box(renderer, 0.0, 0.5 - line_thickness_horizontal / 2.0, 1.0, line_thickness_horizontal, color, command_builder)
             .expect("can't draw split screen vertical bar");
 
         if renderer.player_viewports.len() > 2 {
@@ -343,7 +338,7 @@ impl VulkanRenderer {
                 line_height = 1.0;
             }
 
-            draw_box(renderer, 0.5 - line_thickness_vertical / 2.0, y, line_thickness_vertical, line_height, color, &mut command_builder)
+            draw_box(renderer, 0.5 - line_thickness_vertical / 2.0, y, line_thickness_vertical, line_height, color, command_builder)
                 .expect("can't draw split screen horizontal bar");
         }
     }
@@ -454,7 +449,7 @@ fn upload_mvp_data(renderer: &Renderer, offset: Vec3, rotation: Mat3, view: Mat4
         pipeline.layout().clone(),
         0,
         set
-    );
+    ).unwrap();
 }
 
 fn draw_box(renderer: &Renderer, x: f32, y: f32, width: f32, height: f32, color: [f32; 4], command_builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>) -> MResult<()> {
@@ -528,12 +523,12 @@ fn draw_box(renderer: &Renderer, x: f32, y: f32, width: f32, height: f32, color:
         pipeline.layout().clone(),
         1,
         set
-    );
+    ).unwrap();
 
-    command_builder.set_cull_mode(CullMode::None);
-    command_builder.bind_index_buffer(indices);
-    command_builder.bind_vertex_buffers(0, vertices);
-    command_builder.bind_pipeline_graphics(pipeline);
+    command_builder.set_cull_mode(CullMode::None).unwrap();
+    command_builder.bind_index_buffer(indices).unwrap();
+    command_builder.bind_vertex_buffers(0, vertices).unwrap();
+    command_builder.bind_pipeline_graphics(pipeline).unwrap();
     command_builder.draw_indexed(6, 1, 0, 0, 0).unwrap();
 
     Ok(())

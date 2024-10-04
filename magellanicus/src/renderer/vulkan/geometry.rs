@@ -1,4 +1,3 @@
-use std::iter::empty;
 use std::sync::Arc;
 use crate::vertex::{LightmapVertex, ModelVertex, ModelTriangle};
 use std::vec::Vec;
@@ -73,7 +72,7 @@ impl VulkanMaterialVertexBuffers {
         }
 
         let mut lightmap_vertices = lightmap_vertices.peekable();
-        let mut lightmap_coords_buf = if lightmap_vertices.peek().is_some() {
+        let lightmap_coords_buf = if lightmap_vertices.peek().is_some() {
             let mut lightmap_coords = Vec::<VulkanModelVertexTextureCoords>::with_capacity(vertex_count + 1);
             for i in lightmap_vertices.take(vertex_count + 1) {
                 lightmap_coords.push(VulkanModelVertexTextureCoords { texture_coords: i.lightmap_texture_coords })

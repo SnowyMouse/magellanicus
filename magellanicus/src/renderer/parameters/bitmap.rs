@@ -1,12 +1,9 @@
 pub(crate) mod mipmap_iterator;
 
 use alloc::vec::Vec;
-use alloc::string::{String, ToString};
+use alloc::string::String;
 use alloc::format;
-use alloc::borrow::ToOwned;
-use core::fmt::Display;
 use core::num::NonZeroUsize;
-use std::sync::Arc;
 use crate::error::{Error, MResult};
 use crate::renderer::parameters::bitmap::mipmap_iterator::{MipmapFaceIterator, MipmapType};
 use crate::renderer::Resolution;
