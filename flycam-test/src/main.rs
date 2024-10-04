@@ -1,4 +1,4 @@
-use magellanicus::renderer::{AddBSPParameter, AddBSPParameterLightmapMaterial, AddBSPParameterLightmapSet, AddBitmapBitmapParameter, AddBitmapParameter, AddBitmapSequenceParameter, AddShaderBasicShaderData, AddShaderData, AddShaderParameter, AddSkyParameter, BSP3DNode, BSP3DNodeChild, BSP3DPlane, BSPCluster, BSPData, BSPLeaf, BitmapFormat, BitmapSprite, BitmapType, Renderer, RendererParameters, Resolution, SetDefaultBitmaps, ShaderType};
+use magellanicus::renderer::{AddBSPParameter, AddBSPParameterLightmapMaterial, AddBSPParameterLightmapSet, AddBitmapBitmapParameter, AddBitmapParameter, AddBitmapSequenceParameter, AddShaderBasicShaderData, AddShaderData, AddShaderParameter, AddSkyParameter, BSP3DNode, BSP3DNodeChild, BSP3DPlane, BSPCluster, BSPData, BSPLeaf, BSPPortal, BSPSubcluster, BitmapFormat, BitmapSprite, BitmapType, Renderer, RendererParameters, Resolution, SetDefaultBitmaps, ShaderType};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
@@ -642,8 +642,18 @@ impl FlycamTestHandler {
                         }
                         else {
                             None
-                        }
+                        },
+                        subclusters: i.subclusters.items.iter().map(|s| BSPSubcluster {
+                            surface_indices: s.surface_indices.items.iter().map(|i| i.index as usize).collect(),
+                            world_bounds_from: [s.world_bounds_x.lower as f32, s.world_bounds_y.lower as f32, s.world_bounds_z.lower as f32],
+                            world_bounds_to: [s.world_bounds_x.upper as f32, s.world_bounds_y.upper as f32, s.world_bounds_z.upper as f32],
+                        }).collect(),
+                        cluster_portals: i.portals.items.iter().map(|s| s.portal.unwrap_or(0xFFFF) as usize).collect()
                     }).collect(),
+                    portals: bsp.cluster_portals.items.iter().map(|p| BSPPortal {
+                        front_cluster: p.front_cluster.unwrap_or(0xFFFF) as usize,
+                        back_cluster: p.back_cluster.unwrap_or(0xFFFF) as usize,
+                    }).collect()
                 },
             };
 
@@ -703,7 +713,7 @@ impl FlycamTestHandler {
                     add_lightmap.materials.push(AddBSPParameterLightmapMaterial {
                         shader_vertices,
                         lightmap_vertices: (!lightmap.is_empty()).then_some(lightmap),
-                        indices,
+                        surfaces: indices,
                         shader: shader_path.to_native_path()
                     });
                 }

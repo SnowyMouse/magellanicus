@@ -15,7 +15,7 @@ use std::{eprintln, format, vec};
 use std::fmt::{Debug, Display};
 use std::println;
 use std::boxed::Box;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::time::Instant;
 use std::vec::Vec;
 use glam::{Mat3, Mat4, Vec3};
@@ -206,7 +206,11 @@ impl VulkanRenderer {
 
         let (width, height) = (renderer.renderer.current_resolution.width as f32, renderer.renderer.current_resolution.height as f32);
 
+        let mut allowed_bsp_surfaces_to_render: Vec<usize> = Vec::new();
+
         for i in &renderer.player_viewports {
+            allowed_bsp_surfaces_to_render.clear();
+
             let viewport = Viewport {
                 offset: [i.rel_x * width, i.rel_y * height],
                 extent: [i.rel_width * width, i.rel_height * height],
@@ -247,10 +251,12 @@ impl VulkanRenderer {
             upload_mvp_data(renderer, Vec3::default(), Mat3::IDENTITY, view, proj, &mut command_builder);
 
             for geometry in &currently_loaded_bsp.geometries {
+                let index_buffer = geometry.vulkan.index_buffer.clone();
+                let index_count = index_buffer.len() as usize;
+                command_builder.bind_index_buffer(index_buffer).expect("can't bind indices");
+
                 let shader = renderer.shaders.get(&geometry.vulkan.shader).expect("no shader?");
                 let vulkan_shader = &shader.vulkan;
-
-                command_builder.bind_index_buffer(geometry.vulkan.index_buffer.clone()).expect("can't bind indices");
                 command_builder.bind_vertex_buffers(0, (
                     geometry.vulkan.vertex_buffer.clone(),
                     geometry.vulkan.texture_coords_buffer.clone(),
@@ -264,7 +270,7 @@ impl VulkanRenderer {
 
                 vulkan_shader
                     .pipeline_data
-                    .generate_commands(renderer, geometry.vulkan.index_buffer.len() as u32, &mut command_builder)
+                    .generate_commands(renderer, index_count as u32, &mut command_builder)
                     .expect("can't generate stage commands");
             }
         }
@@ -394,7 +400,9 @@ impl<T: Display> From<Validated<T>> for Error {
 
 impl From<Box<ValidationError>> for Error {
     fn from(value: Box<ValidationError>) -> Self {
-        panic!("Validation error! {value:?}\n\n-----------\n\nBACKTRACE:\n\n{}\n\n-----------\n\n", std::backtrace::Backtrace::force_capture())
+        // FIXME: figure out a more graceful way to do this
+        eprintln!("Validation error! {value:?}\n\n-----------\n\nBACKTRACE:\n\n{}\n\n-----------\n\n", std::backtrace::Backtrace::force_capture());
+        std::process::abort();
     }
 }
 

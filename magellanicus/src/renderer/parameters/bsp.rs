@@ -3,7 +3,7 @@ use alloc::string::String;
 use alloc::format;
 use alloc::borrow::ToOwned;
 use alloc::vec;
-use glam::Vec3;
+use glam::{Vec3, Vec4};
 use crate::error::{Error, MResult};
 use crate::renderer::data::{Bitmap, Shader, ShaderType};
 use crate::renderer::Renderer;
@@ -44,7 +44,7 @@ pub struct AddBSPParameterLightmapMaterial {
     pub lightmap_vertices: Option<Vec<LightmapVertex>>,
 
     /// Describes each triangle.
-    pub indices: Vec<ModelTriangle>,
+    pub surfaces: Vec<ModelTriangle>,
 
     /// Describes the pipeline used for material.
     pub shader: String
@@ -97,7 +97,7 @@ impl AddBSPParameter {
             }
         }
 
-        self.bsp_data.validate(renderer)?;
+        self.bsp_data.validate(renderer, self)?;
 
         Ok(())
     }
@@ -108,7 +108,8 @@ pub struct BSPData {
     pub nodes: Vec<BSP3DNode>,
     pub planes: Vec<BSP3DPlane>,
     pub leaves: Vec<BSPLeaf>,
-    pub clusters: Vec<BSPCluster>
+    pub clusters: Vec<BSPCluster>,
+    pub portals: Vec<BSPPortal>
 }
 
 impl Default for BSPData {
@@ -117,7 +118,8 @@ impl Default for BSPData {
             nodes: vec![BSP3DNode { front_child: None, back_child: None, plane: 0 }],
             planes: vec![BSP3DPlane { angle: [0.0, 1.0, 0.0], offset: 0.0 }],
             leaves: Vec::new(),
-            clusters: Vec::new()
+            clusters: Vec::new(),
+            portals: Vec::new()
         }
     }
 }
@@ -136,8 +138,24 @@ pub struct BSPLeaf {
 
 #[derive(Clone, Debug)]
 pub struct BSPCluster {
-    pub sky: Option<String>
+    pub sky: Option<String>,
+    pub subclusters: Vec<BSPSubcluster>,
+    pub cluster_portals: Vec<usize>
 }
+
+#[derive(Clone, Debug)]
+pub struct BSPSubcluster {
+    pub surface_indices: Vec<usize>,
+    pub world_bounds_from: [f32; 3],
+    pub world_bounds_to: [f32; 3]
+}
+
+#[derive(Clone, Debug)]
+pub struct BSPPortal {
+    pub front_cluster: usize,
+    pub back_cluster: usize
+}
+
 
 #[derive(Copy, Clone, Debug)]
 pub enum BSP3DNodeChild {
@@ -192,7 +210,7 @@ impl BSPData {
         }
     }
 
-    fn validate(&self, renderer: &Renderer) -> MResult<()> {
+    fn validate(&self, renderer: &Renderer, full_parameter: &AddBSPParameter) -> MResult<()> {
         if self.nodes.is_empty() {
             return Err(Error::from_data_error_string("No nodes present".to_owned()))
         }
@@ -206,13 +224,39 @@ impl BSPData {
                 return Err(Error::from_data_error_string(format!("Leaf #{index} points to cluster #{} which does not exist", leaf.cluster)))
             }
         }
+
+        let total_surface_count = full_parameter
+            .lightmap_sets
+            .iter()
+            .map(|b| b.materials.iter().map(|b| b.surfaces.iter()))
+            .flatten()
+            .flatten()
+            .count();
+
         for (index, cluster) in self.clusters.iter().enumerate() {
             if let Some(sky) = cluster.sky.as_ref() {
                 if !renderer.skies.contains_key(sky) {
                     return Err(Error::from_data_error_string(format!("Cluster #{index} points to sky {sky} which has not been loaded")))
                 }
             }
+            for (sc_index, subcluster) in cluster.subclusters.iter().enumerate() {
+                if subcluster.surface_indices.iter().any(|i| *i >= total_surface_count) {
+                    return Err(Error::from_data_error_string(format!("Subcluster {sc_index} of cluster #{index} points to an out-of-bounds surface (there are {total_surface_count} surfaces)")))
+                }
+            }
+            for (p_index, portal) in cluster.cluster_portals.iter().enumerate() {
+                if p_index >= self.portals.len() {
+                    return Err(Error::from_data_error_string(format!("Portal {p_index} of cluster #{index} points to an out-of-bounds portal (there are {} surfaces)", self.portals.len())))
+                }
+            }
         }
+
+        for (p_index, portal) in self.portals.iter().enumerate() {
+            if portal.front_cluster >= self.clusters.len() || portal.back_cluster >= self.clusters.len() {
+                return Err(Error::from_data_error_string(format!("Portal {p_index} points to an out-of-bounds cluster (there are {} surfaces)", self.clusters.len())))
+            }
+        }
+
         Ok(())
     }
 

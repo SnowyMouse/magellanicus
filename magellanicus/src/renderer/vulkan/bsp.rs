@@ -3,6 +3,8 @@ use crate::renderer::{AddBSPParameter, AddBSPParameterLightmapMaterial, Renderer
 
 use std::boxed::Box;
 use std::collections::BTreeMap;
+use std::ops::Range;
+use std::println;
 use std::sync::Arc;
 use std::string::String;
 use std::vec::Vec;
@@ -11,15 +13,16 @@ use vulkano::image::sampler::{Sampler, SamplerCreateInfo};
 use vulkano::image::view::{ImageView, ImageViewCreateInfo};
 use crate::renderer::vulkan::default_allocation_create_info;
 use crate::renderer::vulkan::vertex::{VulkanModelVertex, VulkanModelVertexTextureCoords};
-use crate::vertex::{LightmapVertex, ModelVertex};
+use crate::vertex::{LightmapVertex, ModelTriangle, ModelVertex};
 
 #[derive(Default)]
 pub struct VulkanBSPData {
-    pub images: BTreeMap<usize, (Arc<ImageView>, Arc<Sampler>)>
+    pub images: BTreeMap<usize, (Arc<ImageView>, Arc<Sampler>)>,
+    pub cluster_surface_index_buffers: Vec<Vec<Vec<Option<Subbuffer<[u16]>>>>>
 }
 
 impl VulkanBSPData {
-    pub fn new(renderer: &mut Renderer, param: &AddBSPParameter) -> MResult<Self> {
+    pub fn new(renderer: &mut Renderer, param: &AddBSPParameter, surfaces_ranges: &Vec<Vec<Vec<Vec<ModelTriangle>>>>) -> MResult<Self> {
         let mut images = BTreeMap::new();
         if let Some(n) = &param.lightmap_bitmap {
             let image = renderer
@@ -48,7 +51,39 @@ impl VulkanBSPData {
             }
         }
 
-        Ok(Self { images })
+        let cluster_surface_index_buffers: Vec<Vec<Vec<Option<Subbuffer<[u16]>>>>> = surfaces_ranges
+            .iter()
+            .map(|cluster| cluster
+                .iter()
+                .map(|lightmap| {
+                    lightmap
+                        .iter()
+                        .map(|material| {
+                            if material.is_empty() {
+                                None
+                            }
+                            else {
+                                let indices: Vec<u16> = material
+                                    .iter()
+                                    .map(|triangle| triangle.indices.iter().copied())
+                                    .flatten()
+                                    .collect();
+                                let index_buffer = Buffer::from_iter(
+                                    renderer.renderer.memory_allocator.clone(),
+                                    BufferCreateInfo { usage: BufferUsage::INDEX_BUFFER, ..Default::default() },
+                                    default_allocation_create_info(),
+                                    indices
+                                ).unwrap();
+                                Some(index_buffer)
+                            }
+                        })
+                        .collect()
+                })
+                .collect()
+            )
+            .collect();
+
+        Ok(Self { images, cluster_surface_index_buffers })
     }
 }
 
@@ -109,7 +144,7 @@ impl VulkanBSPGeometryData {
         };
 
         let index_iter: Vec<u16> = material
-            .indices
+            .surfaces
             .iter()
             .map(|t| t.indices.iter())
             .flatten()

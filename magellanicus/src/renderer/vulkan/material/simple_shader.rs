@@ -64,8 +64,13 @@ impl VulkanSimpleShaderMaterial {
 }
 
 impl VulkanMaterial for VulkanSimpleShaderMaterial {
-    fn generate_commands(&self, renderer: &Renderer, index_count: u32, to: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>) -> MResult<()> {
-        to.bind_pipeline_graphics(renderer.renderer.pipelines[&VulkanPipelineType::SimpleTexture].get_pipeline()).unwrap();
+    fn generate_commands(
+        &self,
+        renderer: &Renderer,
+        index_count: u32,
+        to: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>
+    ) -> MResult<()> {
+        to.bind_pipeline_graphics(renderer.renderer.pipelines[&VulkanPipelineType::SimpleTexture].get_pipeline())?;
         to.set_cull_mode(CullMode::Back);
 
         let pipeline = renderer.renderer.pipelines[&VulkanPipelineType::SimpleTexture].get_pipeline();
