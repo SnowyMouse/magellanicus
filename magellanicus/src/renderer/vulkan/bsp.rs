@@ -14,7 +14,7 @@ use vulkano::image::view::{ImageView, ImageViewCreateInfo};
 
 #[derive(Default)]
 pub struct VulkanBSPData {
-    pub images: BTreeMap<usize, (Arc<ImageView>, Arc<Sampler>)>,
+    pub lightmap_images: BTreeMap<usize, (Arc<ImageView>, Arc<Sampler>)>,
     pub cluster_surface_index_buffers: Vec<Vec<Vec<Option<Subbuffer<[u16]>>>>>
 }
 
@@ -80,7 +80,7 @@ impl VulkanBSPData {
             )
             .collect();
 
-        Ok(Self { images, cluster_surface_index_buffers })
+        Ok(Self { lightmap_images: images, cluster_surface_index_buffers })
     }
 }
 

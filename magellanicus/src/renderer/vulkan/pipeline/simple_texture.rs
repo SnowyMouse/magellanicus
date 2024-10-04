@@ -6,7 +6,7 @@ use vulkano::pipeline::GraphicsPipeline;
 use vulkano::pipeline::graphics::vertex_input::Vertex;
 use crate::error::MResult;
 use crate::renderer::vulkan::pipeline::pipeline_loader::{load_pipeline, DepthAccess, PipelineSettings};
-use crate::renderer::vulkan::vertex::{VulkanModelVertex, VulkanModelVertexTextureCoords};
+use crate::renderer::vulkan::vertex::{VulkanModelVertex, VulkanModelVertexLightmapTextureCoords, VulkanModelVertexTextureCoords};
 use crate::renderer::vulkan::VulkanPipelineData;
 
 mod vertex {
@@ -31,7 +31,11 @@ impl SimpleTextureShader {
     pub fn new(device: Arc<Device>, color_format: Format) -> MResult<Self> {
         let pipeline = load_pipeline(device, vertex::load, fragment::load, &PipelineSettings {
             depth_access: DepthAccess::DepthWrite,
-            vertex_buffer_descriptions: vec![VulkanModelVertex::per_vertex(), VulkanModelVertexTextureCoords::per_vertex()],
+            vertex_buffer_descriptions: vec![
+                VulkanModelVertex::per_vertex(),
+                VulkanModelVertexTextureCoords::per_vertex(),
+                VulkanModelVertexLightmapTextureCoords::per_vertex()
+            ],
             alpha_blending: false
         }, color_format)?;
 

@@ -2,8 +2,10 @@
 
 layout(location = 0) in vec3 position;
 layout(location = 1) in vec2 texture_coords;
+layout(location = 2) in vec2 lightmap_texture_coords;
 
 layout(location = 0) out vec2 texcoords;
+layout(location = 1) out vec2 lightmap_texcoords;
 
 layout(set = 0, binding = 0) uniform ModelData {
     mat4 world;
@@ -17,4 +19,5 @@ void main() {
     mat4 worldview = uniforms.view * uniforms.world;
     gl_Position = uniforms.proj * worldview * vec4((position.xyz + uniforms.offset.xyz), 1.0);
     texcoords = texture_coords.xy;
+    lightmap_texcoords = lightmap_texture_coords.xy;
 }

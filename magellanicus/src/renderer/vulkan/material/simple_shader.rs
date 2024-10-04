@@ -5,7 +5,7 @@ use std::eprintln;
 use std::sync::Arc;
 use vulkano::command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer};
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
-use vulkano::image::sampler::{Sampler, SamplerCreateInfo};
+use vulkano::image::sampler::Sampler;
 use vulkano::image::view::{ImageView, ImageViewCreateInfo};
 use vulkano::image::{ImageAspects, ImageSubresourceRange, ImageType};
 use vulkano::pipeline::graphics::rasterization::CullMode;
@@ -43,11 +43,7 @@ impl VulkanSimpleShaderMaterial {
             ..Default::default()
         })?;
 
-        let diffuse_sampler = Sampler::new(
-            renderer.renderer.device.clone(),
-            SamplerCreateInfo::simple_repeat_linear_no_mipmap()
-        )?;
-
+        let diffuse_sampler = renderer.renderer.default_2d_sampler.clone();
         Ok(Self { diffuse, diffuse_sampler })
     }
 }
@@ -60,12 +56,12 @@ impl VulkanMaterial for VulkanSimpleShaderMaterial {
         to: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>
     ) -> MResult<()> {
         to.bind_pipeline_graphics(renderer.renderer.pipelines[&VulkanPipelineType::SimpleTexture].get_pipeline())?;
-        to.set_cull_mode(CullMode::Back).unwrap();
+        to.set_cull_mode(CullMode::Back)?;
 
         let pipeline = renderer.renderer.pipelines[&VulkanPipelineType::SimpleTexture].get_pipeline();
         let set = PersistentDescriptorSet::new(
             renderer.renderer.descriptor_set_allocator.as_ref(),
-            pipeline.layout().set_layouts()[1].clone(),
+            pipeline.layout().set_layouts()[2].clone(),
             [
                 WriteDescriptorSet::sampler(0, self.diffuse_sampler.clone()),
                 WriteDescriptorSet::image_view(1, self.diffuse.clone()),
@@ -76,11 +72,11 @@ impl VulkanMaterial for VulkanSimpleShaderMaterial {
         to.bind_descriptor_sets(
             PipelineBindPoint::Graphics,
             pipeline.layout().clone(),
-            1,
+            2,
             set
-        ).unwrap();
+        )?;
 
-        to.draw_indexed(index_count, 1, 0, 0, 0).unwrap();
+        to.draw_indexed(index_count, 1, 0, 0, 0)?;
 
         Ok(())
     }

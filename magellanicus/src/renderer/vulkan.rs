@@ -10,6 +10,7 @@ mod player_viewport;
 mod vertex;
 mod material;
 
+use std::borrow::ToOwned;
 use crate::error::{Error, MResult};
 use crate::renderer::data::BSP;
 use crate::renderer::vulkan::helper::{build_swapchain, LoadedVulkan};
@@ -47,6 +48,7 @@ use vulkano::render_pass::{AttachmentLoadOp, AttachmentStoreOp};
 use vulkano::swapchain::{acquire_next_image, Surface, Swapchain, SwapchainAcquireFuture, SwapchainCreateInfo, SwapchainPresentInfo};
 use vulkano::sync::GpuFuture;
 use vulkano::{Validated, ValidationError, VulkanError};
+use vulkano::image::sampler::{Sampler, SamplerCreateInfo};
 
 pub struct VulkanRenderer {
     current_resolution: Resolution,
@@ -63,6 +65,7 @@ pub struct VulkanRenderer {
     surface: Arc<Surface>,
     swapchain_images: Vec<Arc<Image>>,
     swapchain_image_views: Vec<Arc<ImageView>>,
+    default_2d_sampler: Arc<Sampler>,
 }
 
 impl VulkanRenderer {
@@ -106,6 +109,8 @@ impl VulkanRenderer {
             ImageView::new_default(v.clone()).unwrap()
         }).collect();
 
+        let default_2d_sampler = Sampler::new(device.clone(), SamplerCreateInfo::simple_repeat_linear())?;
+
         Ok(Self {
             current_resolution: renderer_parameters.resolution,
             instance,
@@ -120,7 +125,8 @@ impl VulkanRenderer {
             surface,
             swapchain_image_views,
             memory_allocator,
-            swapchain_images
+            swapchain_images,
+            default_2d_sampler
         })
     }
 
@@ -246,6 +252,8 @@ impl VulkanRenderer {
             upload_mvp_data(renderer, Vec3::default(), Mat3::IDENTITY, view, proj, &mut command_builder);
 
             for geometry in &currently_loaded_bsp.geometries {
+                upload_lightmap_data(renderer, geometry.lightmap_index, &mut command_builder);
+
                 let index_buffer = geometry.vulkan.index_buffer.clone();
                 let index_count = index_buffer.len() as usize;
                 command_builder.bind_index_buffer(index_buffer).expect("can't bind indices");
@@ -268,6 +276,7 @@ impl VulkanRenderer {
                     .generate_commands(renderer, index_count as u32, &mut command_builder)
                     .expect("can't generate stage commands");
             }
+            upload_lightmap_data(renderer, None, &mut command_builder);
         }
 
         Self::draw_split_screen_bars(renderer, &mut command_builder, width, height);
@@ -416,8 +425,51 @@ impl Error {
     }
 }
 
-fn upload_mvp_data(renderer: &Renderer, offset: Vec3, rotation: Mat3, view: Mat4, proj: Mat4, builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>) {
-    let pipeline = renderer.renderer.pipelines[&VulkanPipelineType::SolidColor].get_pipeline();
+fn upload_lightmap_data(
+    renderer: &Renderer,
+    lightmap_index: Option<usize>,
+    builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>
+) {
+    let pipeline = renderer.renderer.pipelines[&VulkanPipelineType::SimpleTexture].get_pipeline();
+    let sampler = renderer
+        .current_bsp
+        .as_ref()
+        .and_then(|b| renderer.bsps.get(b))
+        .and_then(|b| Some((b, lightmap_index?)))
+        .and_then(|(b, i)| b.vulkan.lightmap_images.get(&i))
+        .map(|b| b.to_owned())
+        .unwrap_or_else(|| {
+            let image = ImageView::new_default(renderer.get_default_2d().vulkan.image.clone()).unwrap();
+            (image, renderer.renderer.default_2d_sampler.clone())
+        });
+
+    let set = PersistentDescriptorSet::new(
+        renderer.renderer.descriptor_set_allocator.as_ref(),
+        pipeline.layout().set_layouts()[2].clone(),
+        [
+            WriteDescriptorSet::sampler(0, sampler.1),
+            WriteDescriptorSet::image_view(1, sampler.0),
+        ],
+        []
+    ).unwrap();
+
+    builder.bind_descriptor_sets(
+        PipelineBindPoint::Graphics,
+        pipeline.layout().clone(),
+        1,
+        set
+    ).unwrap();
+}
+
+fn upload_mvp_data(
+    renderer: &Renderer,
+    offset: Vec3,
+    rotation: Mat3,
+    view: Mat4,
+    proj: Mat4,
+    builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>
+) {
+    let pipeline = renderer.renderer.pipelines[&VulkanPipelineType::SimpleTexture].get_pipeline();
     let model = Mat4::IDENTITY;
     let model_data = VulkanModelData {
         world: model.to_cols_array_2d(),

@@ -30,6 +30,14 @@ pub struct VulkanModelVertexTextureCoords {
 
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
+#[derive(BufferContents, Vertex)]
+pub struct VulkanModelVertexLightmapTextureCoords {
+    #[format(R32G32_SFLOAT)]
+    pub lightmap_texture_coords: [f32; 2],
+}
+
+#[derive(Copy, Clone, Debug)]
+#[repr(C)]
 #[derive(BufferContents)]
 pub struct VulkanModelData {
     pub world: [[f32; 4]; 4],
