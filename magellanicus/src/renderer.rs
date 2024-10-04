@@ -14,7 +14,7 @@ use player_viewport::*;
 use crate::error::{Error, MResult};
 
 pub use player_viewport::Camera;
-pub use glam::Vec3;
+use glam::Vec3;
 
 mod parameters;
 mod vulkan;
