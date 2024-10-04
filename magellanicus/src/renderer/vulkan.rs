@@ -10,7 +10,6 @@ mod player_viewport;
 mod vertex;
 mod material;
 
-use std::borrow::ToOwned;
 use crate::error::{Error, MResult};
 use crate::renderer::data::BSP;
 use crate::renderer::vulkan::helper::{build_swapchain, LoadedVulkan};
@@ -23,6 +22,7 @@ use glam::{Mat3, Mat4, Vec3};
 pub use material::*;
 pub use pipeline::*;
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
+use std::borrow::ToOwned;
 use std::boxed::Box;
 use std::collections::BTreeMap;
 use std::fmt::Display;
@@ -36,6 +36,7 @@ use vulkano::descriptor_set::allocator::{StandardDescriptorSetAllocator, Standar
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::device::{Device, Queue};
 use vulkano::format::Format;
+use vulkano::image::sampler::{Sampler, SamplerCreateInfo};
 use vulkano::image::view::ImageView;
 use vulkano::image::{Image, ImageCreateInfo, ImageType, ImageUsage};
 use vulkano::instance::Instance;
@@ -48,7 +49,6 @@ use vulkano::render_pass::{AttachmentLoadOp, AttachmentStoreOp};
 use vulkano::swapchain::{acquire_next_image, Surface, Swapchain, SwapchainAcquireFuture, SwapchainCreateInfo, SwapchainPresentInfo};
 use vulkano::sync::GpuFuture;
 use vulkano::{Validated, ValidationError, VulkanError};
-use vulkano::image::sampler::{Sampler, SamplerCreateInfo};
 
 pub struct VulkanRenderer {
     current_resolution: Resolution,
@@ -251,15 +251,28 @@ impl VulkanRenderer {
 
             upload_mvp_data(renderer, Vec3::default(), Mat3::IDENTITY, view, proj, &mut command_builder);
 
-            for geometry in &currently_loaded_bsp.geometries {
-                upload_lightmap_data(renderer, geometry.lightmap_index, &mut command_builder);
+            let geo_shader_iterator = currently_loaded_bsp
+                .geometries
+                .iter()
+                .map(|g| (g, &renderer.shaders.get(&g.vulkan.shader).expect("no shader?").vulkan.pipeline_data));
+
+            let opaque = geo_shader_iterator.clone().filter(|s| !s.1.is_transparent());
+
+            #[allow(unused_variables)]
+            let non_opaque = geo_shader_iterator.clone().filter(|s| s.1.is_transparent());
+
+            // Draw non-transparent shaders first
+            let mut current_lightmap: Option<Option<usize>> = None;
+            for (geometry, shader) in opaque {
+                if current_lightmap != Some(geometry.lightmap_index) {
+                    current_lightmap = Some(geometry.lightmap_index);
+                    upload_lightmap_data(renderer, geometry.lightmap_index, &mut command_builder);
+                }
 
                 let index_buffer = geometry.vulkan.index_buffer.clone();
                 let index_count = index_buffer.len() as usize;
                 command_builder.bind_index_buffer(index_buffer).expect("can't bind indices");
 
-                let shader = renderer.shaders.get(&geometry.vulkan.shader).expect("no shader?");
-                let vulkan_shader = &shader.vulkan;
                 command_builder.bind_vertex_buffers(0, (
                     geometry.vulkan.vertex_buffer.clone(),
                     geometry.vulkan.texture_coords_buffer.clone(),
@@ -271,12 +284,10 @@ impl VulkanRenderer {
                     }
                 )).unwrap();
 
-                vulkan_shader
-                    .pipeline_data
+                shader
                     .generate_commands(renderer, index_count as u32, &mut command_builder)
                     .expect("can't generate stage commands");
             }
-            upload_lightmap_data(renderer, None, &mut command_builder);
         }
 
         Self::draw_split_screen_bars(renderer, &mut command_builder, width, height);

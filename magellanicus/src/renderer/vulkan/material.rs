@@ -1,4 +1,5 @@
 mod simple_shader;
+mod shader_environment;
 
 use crate::error::MResult;
 use crate::renderer::vulkan::material::simple_shader::VulkanSimpleShaderMaterial;
