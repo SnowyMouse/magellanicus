@@ -1,9 +1,8 @@
-use crate::error::{Error, MResult};
+use crate::error::MResult;
 use crate::renderer::vulkan::{VulkanMaterial, VulkanPipelineType};
 use crate::renderer::{AddShaderBasicShaderData, Renderer};
-use std::string::ToString;
-use std::sync::Arc;
 use std::eprintln;
+use std::sync::Arc;
 use vulkano::command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer};
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::image::sampler::{Sampler, SamplerCreateInfo};
@@ -22,11 +21,8 @@ impl VulkanSimpleShaderMaterial {
         let diffuse = if let Some(b) = add_shader_parameter.bitmap.as_ref() {
             renderer.bitmaps[b].bitmaps[0].vulkan.image.clone()
         }
-        else if let Some(b) = renderer.default_bitmaps.as_ref().map(|b| &b.default_2d) {
-            renderer.bitmaps[b].bitmaps[1].vulkan.image.clone()
-        }
         else {
-            return Err(Error::from_data_error_string("No bitmap referenced and no default bitmaps provided, either".to_string()))
+            renderer.get_default_2d().vulkan.image.clone()
         };
 
         if diffuse.array_layers() != 1 || diffuse.image_type() != ImageType::Dim2d {

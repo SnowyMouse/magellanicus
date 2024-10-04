@@ -1,13 +1,13 @@
 pub(crate) mod mipmap_iterator;
 
 use alloc::vec::Vec;
-use alloc::string::String;
 use alloc::format;
 use core::num::NonZeroUsize;
 use crate::error::{Error, MResult};
 use crate::renderer::parameters::bitmap::mipmap_iterator::{MipmapFaceIterator, MipmapType};
 use crate::renderer::Resolution;
 
+#[derive(Clone)]
 pub struct AddBitmapParameter {
     pub bitmaps: Vec<AddBitmapBitmapParameter>,
     pub sequences: Vec<AddBitmapSequenceParameter>
@@ -121,6 +121,7 @@ pub use super::super::data::BitmapSequence as AddBitmapSequenceParameter;
 pub use super::super::data::BitmapSprite;
 pub use super::super::data::BitmapType;
 
+#[derive(Clone)]
 pub struct AddBitmapBitmapParameter {
     pub format: BitmapFormat,
     pub bitmap_type: BitmapType,
@@ -184,11 +185,4 @@ impl BitmapFormat {
             Self::P8 => 1,
         }
     }
-}
-
-#[derive(Default)]
-pub struct SetDefaultBitmaps {
-    pub default_2d: String,
-    pub default_3d: String,
-    pub default_cubemap: String,
 }

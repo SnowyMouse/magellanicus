@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use magellanicus::renderer::{AddBSPParameter, AddBSPParameterLightmapMaterial, AddBSPParameterLightmapSet, AddBitmapBitmapParameter, AddBitmapParameter, AddBitmapSequenceParameter, AddShaderBasicShaderData, AddShaderData, AddShaderParameter, AddSkyParameter, BSP3DNode, BSP3DNodeChild, BSP3DPlane, BSPCluster, BSPData, BSPLeaf, BSPPortal, BSPSubcluster, BitmapFormat, BitmapSprite, BitmapType, Renderer, RendererParameters, Resolution, SetDefaultBitmaps, ShaderType};
+use magellanicus::renderer::{AddBSPParameter, AddBSPParameterLightmapMaterial, AddBSPParameterLightmapSet, AddBitmapBitmapParameter, AddBitmapParameter, AddBitmapSequenceParameter, AddShaderBasicShaderData, AddShaderData, AddShaderParameter, AddSkyParameter, BSP3DNode, BSP3DNodeChild, BSP3DPlane, BSPCluster, BSPData, BSPLeaf, BSPPortal, BSPSubcluster, BitmapFormat, BitmapSprite, BitmapType, Renderer, RendererParameters, Resolution, ShaderType};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
@@ -14,7 +14,7 @@ use winit::window::{Window, WindowId};
 
 use clap::Parser;
 use magellanicus::vertex::{LightmapVertex, ModelTriangle, ModelVertex};
-use ringhopper::definitions::{Bitmap, BitmapDataFormat, BitmapDataType, Globals, Scenario, ScenarioStructureBSP, ShaderEnvironment, ShaderModel, ShaderTransparentChicago, ShaderTransparentChicagoExtended, ShaderTransparentGeneric, ShaderTransparentGlass, ShaderTransparentMeter, Sky, UnicodeStringList};
+use ringhopper::definitions::{Bitmap, BitmapDataFormat, BitmapDataType, Scenario, ScenarioStructureBSP, ShaderEnvironment, ShaderModel, ShaderTransparentChicago, ShaderTransparentChicagoExtended, ShaderTransparentGeneric, ShaderTransparentGlass, ShaderTransparentMeter, Sky, UnicodeStringList};
 use ringhopper::primitives::dynamic::DynamicTagDataArray;
 use ringhopper::primitives::engine::Engine;
 use ringhopper::primitives::primitive::{TagGroup, TagPath};
@@ -319,25 +319,6 @@ impl FlycamTestHandler {
         
         for (path, bitmap) in all_bitmaps {
             Self::load_bitmap(renderer, &path, bitmap).map_err(|e| format!("Failed to load bitmap {path}: {e}"))?;
-        }
-
-        if let Some(default_bitmaps) = self
-            .scenario_data
-            .tags
-            .get(&TagPath::from_path("globals\\globals.globals").unwrap())
-            .and_then(|g| g.get_ref::<Globals>())
-            .and_then(|g| g.rasterizer_data.items.get(0))
-            .and_then(|g| {
-                let default_2d = g.default_2d.path().map(|p| p.to_string())?;
-                let default_3d = g.default_3d.path().map(|p| p.to_string())?;
-                let default_cubemap = g.default_cube_map.path().map(|p| p.to_string())?;
-                Some(SetDefaultBitmaps {
-                    default_2d,
-                    default_3d,
-                    default_cubemap
-                })
-            }) {
-            renderer.set_default_bitmaps(default_bitmaps).map_err(|e| format!("Failed to set default bitmaps: {e}"))?
         }
 
         Ok(())
