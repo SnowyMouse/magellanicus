@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
+use std::sync::mpsc::{channel, Receiver};
 use std::time::Instant;
 
 use clap::Parser;
@@ -40,6 +41,12 @@ struct Arguments {
     /// Ignored/not needed when loading cache files, as this is derived from the map.
     pub engine: Option<String>,
 
+    /// Sensitivity of the mouse.
+    ///
+    /// Must be between 1 and 4.
+    #[arg(long = "mouse-sensitivity", short = 'm', default_value = "0.0015")]
+    pub mouse_sensitivity: f32,
+
     /// Number of viewports to use.
     ///
     /// Must be between 1 and 4.
@@ -55,7 +62,7 @@ struct ScenarioData {
 }
 
 fn main() -> Result<(), String> {
-    let Arguments { tags, scenario, engine, mut viewports } = Arguments::parse();
+    let Arguments { tags, scenario, engine, mut viewports, mouse_sensitivity } = Arguments::parse();
 
     if !(1..=4).contains(&viewports) {
         eprintln!("--viewports ({viewports}) must be between 1-4; clamping");
@@ -133,43 +140,12 @@ fn main() -> Result<(), String> {
         pause_rendering_flag: Arc::new(AtomicBool::new(false)),
     };
 
-    handler.initialize_and_start()?;
+    let (camera_send, camera_receive) = channel::<(f32, f32, usize)>();
+    handler.initialize_and_start(camera_receive)?;
 
     window.show();
     mouse.capture(true);
     mouse.set_relative_mouse_mode(true);
-
-    fn rotate(rotation: [f32; 3], yaw_delta: f32, pitch_delta: f32) -> [f32; 3] {
-        let mut yaw;
-        let mut pitch;
-
-        if rotation[0] != 0.0 || rotation[1] != 0.0 {
-            let full_xyz = Vec3::from([rotation[0], rotation[1], rotation[2]]).normalize();
-            let full_xy = Vec3::from([full_xyz.x, full_xyz.y, 0.0]);
-            let normalized_xy = Vec3::from(full_xy).normalize();
-            let x_angle = normalized_xy[0].acos();
-            let y_angle = normalized_xy[1].asin();
-
-            yaw = if y_angle < 0.0 { -x_angle } else { x_angle };
-            pitch = full_xyz[2].asin();
-        }
-        else {
-            yaw = 0.0;
-            pitch = if rotation[2] < 0.0 {
-                -1.5
-            }
-            else {
-                1.5
-            }
-        }
-
-        yaw -= yaw_delta;
-        pitch -= pitch_delta;
-        pitch = pitch.clamp(-1.5, 1.5);
-        let pitch_sine = pitch.sin();
-        let pitch_cosine = pitch.cos();
-        [yaw.cos() * pitch_cosine, yaw.sin() * pitch_cosine, pitch_sine]
-    }
 
     let mut w = false;
     let mut a = false;
@@ -200,10 +176,7 @@ fn main() -> Result<(), String> {
                 break;
             }
             Event::MouseMotion { xrel, yrel, .. } => {
-                let mut renderer = handler.lock_renderer();
-                let mut camera = renderer.renderer.get_camera(viewport_mod);
-                camera.rotation = rotate(camera.rotation, xrel as f32 * 0.0015, yrel as f32 * 0.0015);
-                renderer.renderer.set_camera_for_viewport(viewport_mod, camera);
+                let _ = camera_send.send((xrel as f32 * mouse_sensitivity, yrel as f32 * mouse_sensitivity, viewport_mod));
             }
             Event::KeyDown { keycode, repeat, .. } => {
                 if repeat == true {
@@ -365,7 +338,7 @@ impl FlycamTestHandler {
         }
     }
 
-    fn initialize_and_start(&mut self) -> Result<(), String> {
+    fn initialize_and_start(&mut self, camera_rotation_channel: Receiver<(f32, f32, usize)>) -> Result<(), String> {
         if let Err(e) = self.load_bitmaps() {
             return Err(format!("ERROR LOADING BITMAPS: {e}"))
         }
@@ -419,7 +392,7 @@ impl FlycamTestHandler {
         let pause_rendering_ref = self.pause_rendering_flag.clone();
         let velocity = self.camera_velocity.clone();
         std::thread::spawn(move || {
-            run_renderer_thread(render_ref, pause_rendering_ref, velocity);
+            run_renderer_thread(render_ref, pause_rendering_ref, velocity, camera_rotation_channel);
         });
 
         Ok(())
@@ -827,7 +800,7 @@ impl FlycamTestHandler {
     }
 }
 
-fn run_renderer_thread(renderer: Weak<Mutex<Renderer>>, pause_rendering: Arc<AtomicBool>, velocity: Arc<[[AtomicU32; 4]; 4]>) {
+fn run_renderer_thread(renderer: Weak<Mutex<Renderer>>, pause_rendering: Arc<AtomicBool>, velocity: Arc<[[AtomicU32; 4]; 4]>, camera_channel: Receiver<(f32, f32, usize)>) {
     let time_start = Instant::now();
     let mut last_loop = 0.0;
     let mut time_since_last_fps = Instant::now();
@@ -840,9 +813,16 @@ fn run_renderer_thread(renderer: Weak<Mutex<Renderer>>, pause_rendering: Arc<Ato
         let mut renderer = renderer.lock().unwrap();
 
         let ms_since_start = (Instant::now() - time_start).as_millis() as f64 / 1000.0;
+        let mut rotate_deltas = [[0.0f32; 2]; 4];
+
+        while let Ok(n) = camera_channel.try_recv() {
+            rotate_deltas[n.2][0] += n.0;
+            rotate_deltas[n.2][1] += n.1;
+        }
 
         for v in 0..renderer.get_viewport_count().min(velocity.len()) {
             let vel = &velocity[v];
+            let rot = &rotate_deltas[v];
 
             let multiplier = f32::from_bits(vel[3].load(Ordering::Relaxed));
             let delta = (ms_since_start - last_loop) as f32 * 2.0 * multiplier;
@@ -852,8 +832,9 @@ fn run_renderer_thread(renderer: Weak<Mutex<Renderer>>, pause_rendering: Arc<Ato
 
             let mut camera = renderer.get_camera(v);
             let mut position = Vec3::from(camera.position);
-            let rotation = Vec3::from(camera.rotation);
+            camera.rotation = rotate(camera.rotation, rot[0], rot[1]);
 
+            let rotation = Vec3::from(camera.rotation);
             position += Vec3::new(rotation.x * forward, rotation.y * forward, rotation.z * forward);
 
             let q = Vec3::new(rotation.x, rotation.y, 0.0).normalize();
@@ -901,4 +882,37 @@ impl Drop for PriorityLock<'_> {
     fn drop(&mut self) {
         self.pause_rendering_flag.swap(false, Ordering::Relaxed);
     }
+}
+
+
+fn rotate(rotation: [f32; 3], yaw_delta: f32, pitch_delta: f32) -> [f32; 3] {
+    let mut yaw;
+    let mut pitch;
+
+    if rotation[0] != 0.0 || rotation[1] != 0.0 {
+        let full_xyz = Vec3::from([rotation[0], rotation[1], rotation[2]]).normalize();
+        let full_xy = Vec3::from([full_xyz.x, full_xyz.y, 0.0]);
+        let normalized_xy = Vec3::from(full_xy).normalize();
+        let x_angle = normalized_xy[0].acos();
+        let y_angle = normalized_xy[1].asin();
+
+        yaw = if y_angle < 0.0 { -x_angle } else { x_angle };
+        pitch = full_xyz[2].asin();
+    }
+    else {
+        yaw = 0.0;
+        pitch = if rotation[2] < 0.0 {
+            -1.5
+        }
+        else {
+            1.5
+        }
+    }
+
+    yaw -= yaw_delta;
+    pitch -= pitch_delta;
+    pitch = pitch.clamp(-1.5, 1.5);
+    let pitch_sine = pitch.sin();
+    let pitch_cosine = pitch.cos();
+    [yaw.cos() * pitch_cosine, yaw.sin() * pitch_cosine, pitch_sine]
 }
