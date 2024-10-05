@@ -69,9 +69,9 @@ pub struct VulkanRenderer {
 }
 
 impl VulkanRenderer {
-    pub fn new(
+    pub unsafe fn new(
         renderer_parameters: &RendererParameters,
-        surface: Arc<impl HasRawWindowHandle + HasRawDisplayHandle + Send + Sync + 'static>
+        surface: &(impl HasRawWindowHandle + HasRawDisplayHandle)
     ) -> MResult<Self> {
         let LoadedVulkan { device, instance, surface, queue} = helper::load_vulkan_and_get_queue(surface)?;
 

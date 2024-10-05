@@ -19,10 +19,10 @@ pub struct LoadedVulkan {
     pub surface: Arc<Surface>,
 }
 
-pub fn load_vulkan_and_get_queue(surface: Arc<impl HasRawWindowHandle + HasRawDisplayHandle + Send + Sync + 'static>) -> MResult<LoadedVulkan> {
+pub unsafe fn load_vulkan_and_get_queue(surface: &(impl HasRawWindowHandle + HasRawDisplayHandle)) -> MResult<LoadedVulkan> {
     let library = VulkanLibrary::new()?;
 
-    let enabled_extensions = Surface::required_extensions(surface.as_ref());
+    let enabled_extensions = Surface::required_extensions(surface);
     let device_extensions_13 = DeviceExtensions {
         khr_swapchain: true,
         ..DeviceExtensions::empty()
@@ -44,7 +44,7 @@ pub fn load_vulkan_and_get_queue(surface: Arc<impl HasRawWindowHandle + HasRawDi
         ..Default::default()
     })?;
 
-    let surface = Surface::from_window(instance.clone(), surface.clone())?;
+    let surface = Surface::from_window_ref(instance.clone(), surface)?;
 
     let (physical_device, queue_family_index, device_extensions) = find_best_gpu(
         instance.clone(),

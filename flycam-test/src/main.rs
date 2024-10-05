@@ -176,7 +176,7 @@ fn load_tags_from_cache(cache: &Path) -> Result<(TagPath, &'static Engine, HashM
 
 pub struct FlycamTestHandler {
     renderer: Option<Arc<Mutex<Renderer>>>,
-    window: Option<Arc<Window>>,
+    window: Option<Window>,
     scenario_data: ScenarioData,
     viewports: usize,
     pause_rendering_flag: Arc<AtomicBool>,
@@ -192,15 +192,18 @@ impl ApplicationHandler for FlycamTestHandler {
         attributes.min_inner_size = Some(Size::Physical(PhysicalSize::new(64, 64)));
         attributes.title = format!("Magellanicus - {path}", path = self.scenario_data.scenario_path);
 
-        let window = Arc::new(event_loop.create_window(attributes).unwrap());
-        self.window = Some(window.clone());
-
+        let window = event_loop.create_window(attributes).unwrap();
         let PhysicalSize { width, height } = window.inner_size();
-        let renderer = Renderer::new(RendererParameters {
-            resolution: Resolution { width, height },
-            number_of_viewports: self.viewports,
-            vsync: false
-        }, window.clone());
+        let renderer =
+            unsafe {
+                Renderer::new(&window, RendererParameters {
+                    resolution: Resolution { width, height },
+                    number_of_viewports: self.viewports,
+                    vsync: false
+                })
+            };
+
+        self.window = Some(window);
 
         match renderer {
             Ok(r) => self.renderer = Some(Arc::new(Mutex::new(r))),

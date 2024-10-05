@@ -41,7 +41,7 @@ impl Renderer {
     /// Errors if:
     /// - `parameters` is invalid
     /// - the renderer backend could not be initialized for some reason
-    pub fn new(parameters: RendererParameters, surface: Arc<impl HasRawWindowHandle + HasRawDisplayHandle + Send + Sync + 'static>) -> MResult<Self> {
+    pub unsafe fn new(surface: &(impl HasRawWindowHandle + HasRawDisplayHandle), parameters: RendererParameters) -> MResult<Self> {
         if parameters.resolution.height == 0 || parameters.resolution.width == 0 {
             return Err(Error::DataError { error: "resolution has 0 on one or more dimensions".to_owned() })
         }
@@ -107,7 +107,7 @@ impl Renderer {
         }
 
         let mut result = Self {
-            renderer: VulkanRenderer::new(&parameters, surface.clone())?,
+            renderer: VulkanRenderer::new(&parameters, surface)?,
             player_viewports,
             bitmaps: BTreeMap::new(),
             shaders: BTreeMap::new(),
