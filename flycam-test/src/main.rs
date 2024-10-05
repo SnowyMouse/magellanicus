@@ -3,16 +3,12 @@
 use magellanicus::renderer::{AddBSPParameter, AddBSPParameterLightmapMaterial, AddBSPParameterLightmapSet, AddBitmapBitmapParameter, AddBitmapParameter, AddBitmapSequenceParameter, AddShaderBasicShaderData, AddShaderData, AddShaderParameter, AddSkyParameter, BSP3DNode, BSP3DNodeChild, BSP3DPlane, BSPCluster, BSPData, BSPLeaf, BSPPortal, BSPSubcluster, BitmapFormat, BitmapSprite, BitmapType, Renderer, RendererParameters, Resolution, ShaderType};
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{Duration, Instant};
-use winit::application::ApplicationHandler;
-use winit::dpi::{PhysicalSize, Size};
-use winit::event::WindowEvent;
-use winit::event_loop::{ActiveEventLoop, EventLoop};
-use winit::window::{Window, WindowId};
+use std::time::Instant;
 
 use clap::Parser;
+use glam::Vec3;
 use magellanicus::vertex::{LightmapVertex, ModelTriangle, ModelVertex};
 use ringhopper::definitions::{Bitmap, BitmapDataFormat, BitmapDataType, Scenario, ScenarioStructureBSP, ShaderEnvironment, ShaderModel, ShaderTransparentChicago, ShaderTransparentChicagoExtended, ShaderTransparentGeneric, ShaderTransparentGlass, ShaderTransparentMeter, Sky, UnicodeStringList};
 use ringhopper::primitives::dynamic::DynamicTagDataArray;
@@ -23,6 +19,8 @@ use ringhopper::tag::bitmap::MipmapTextureIterator;
 use ringhopper::tag::dependency::recursively_get_dependencies_for_map;
 use ringhopper::tag::scenario_structure_bsp::get_uncompressed_vertices_for_bsp_material;
 use ringhopper::tag::tree::{CachingTagTree, CachingTagTreeWriteStrategy, TagTree, VirtualTagsDirectory};
+use sdl2::event::Event;
+use sdl2::keyboard::Keycode;
 
 #[derive(Parser)]
 struct Arguments {
@@ -86,6 +84,7 @@ fn main() -> Result<(), String> {
         let (engine, dependencies) = load_tags_from_dir(&tags, &scenario_path, engine)?;
         (scenario_path, engine, dependencies)
     };
+    let window_title = format!("Magellanicus - {scenario_path}");
 
     let scenario_tag = dependencies
         .get(&scenario_path)
@@ -101,17 +100,169 @@ fn main() -> Result<(), String> {
         engine,
     };
 
-    let event_loop = EventLoop::new().unwrap();
+    let sdl = sdl2::init()?;
+    let mut events = sdl.event_pump()?;
+    let video = sdl.video()?;
+    let mouse = sdl.mouse();
+    let mut window = video.window(&window_title, 1280, 960)
+        .vulkan()
+        .metal_view()
+        .position_centered()
+        .build()
+        .unwrap();
+
+    let renderer =
+        unsafe {
+            Renderer::new(&window, RendererParameters {
+                resolution: Resolution { width: 1280, height: 960 },
+                number_of_viewports: viewports,
+                vsync: false
+            })
+        }.unwrap();
+
     let mut handler = FlycamTestHandler {
-        renderer: None,
-        window: None,
+        renderer: Some(Arc::new(Mutex::new(renderer))),
         scenario_data,
         viewports,
-        camera_speed_multiplier: 1.0,
-        camera_velocity: [0.0, 0.0, 0.0],
+        camera_velocity: Arc::new([
+            [AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(1.0f32.to_bits())],
+            [AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(1.0f32.to_bits())],
+            [AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(1.0f32.to_bits())],
+            [AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(1.0f32.to_bits())],
+        ]),
         pause_rendering_flag: Arc::new(AtomicBool::new(false)),
     };
-    event_loop.run_app(&mut handler).unwrap();
+
+    handler.initialize_and_start()?;
+
+    window.show();
+    mouse.capture(true);
+    mouse.set_relative_mouse_mode(true);
+
+    fn rotate(rotation: [f32; 3], yaw_delta: f32, pitch_delta: f32) -> [f32; 3] {
+        let mut yaw;
+        let mut pitch;
+
+        if rotation[0] != 0.0 || rotation[1] != 0.0 {
+            let full_xyz = Vec3::from([rotation[0], rotation[1], rotation[2]]).normalize();
+            let full_xy = Vec3::from([full_xyz.x, full_xyz.y, 0.0]);
+            let normalized_xy = Vec3::from(full_xy).normalize();
+            let x_angle = normalized_xy[0].acos();
+            let y_angle = normalized_xy[1].asin();
+
+            yaw = if y_angle < 0.0 { -x_angle } else { x_angle };
+            pitch = full_xyz[2].asin();
+        }
+        else {
+            yaw = 0.0;
+            pitch = if rotation[2] < 0.0 {
+                -1.5
+            }
+            else {
+                1.5
+            }
+        }
+
+        yaw -= yaw_delta;
+        pitch -= pitch_delta;
+        pitch = pitch.clamp(-1.5, 1.5);
+        let pitch_sine = pitch.sin();
+        let pitch_cosine = pitch.cos();
+        [yaw.cos() * pitch_cosine, yaw.sin() * pitch_cosine, pitch_sine]
+    }
+
+    let mut w = false;
+    let mut a = false;
+    let mut s = false;
+    let mut d = false;
+    let mut space = false;
+    let mut ctrl = false;
+    let mut shift = false;
+
+    fn make_thing(w: bool, a: bool, s: bool, d: bool, ctrl: bool, space: bool) -> [f32; 3] {
+        let mut forward = 1.0 * (w as u32 as f32) - 1.0 * (s as u32 as f32);
+        let mut side = 1.0 * (a as u32 as f32) - 1.0 * (d as u32 as f32);
+        let up = 1.0 * (space as u32 as f32) - 1.0 * (ctrl as u32 as f32);
+
+        if forward != 0.0 && side != 0.0 {
+            forward /= 2.0f32.sqrt();
+            side /= 2.0f32.sqrt();
+        }
+
+        [forward, side, up]
+    }
+
+    loop {
+        match events.wait_event() {
+            Event::Quit { .. } => {
+                println!("EXITING!");
+                break;
+            }
+            Event::MouseMotion { xrel, yrel, .. } => {
+                let mut renderer = handler.lock_renderer();
+                let mut camera = renderer.renderer.get_camera(0);
+                camera.rotation = rotate(camera.rotation, xrel as f32 * 0.0015, yrel as f32 * 0.0015);
+                renderer.renderer.set_camera_for_viewport(0, camera);
+            }
+            Event::KeyDown { keycode, .. } => {
+                w |= keycode == Some(Keycode::W);
+                a |= keycode == Some(Keycode::A);
+                s |= keycode == Some(Keycode::S);
+                d |= keycode == Some(Keycode::D);
+                ctrl |= keycode == Some(Keycode::LCtrl);
+                space |= keycode == Some(Keycode::Space);
+                shift |= keycode == Some(Keycode::LShift);
+
+                let result = make_thing(w,a,s,d,ctrl,space);
+                handler.camera_velocity[0][0].swap(result[0].to_bits(), Ordering::Relaxed);
+                handler.camera_velocity[0][1].swap(result[1].to_bits(), Ordering::Relaxed);
+                handler.camera_velocity[0][2].swap(result[2].to_bits(), Ordering::Relaxed);
+
+                if keycode == Some(Keycode::LShift) {
+                    let increased = f32::from_bits(handler.camera_velocity[0][3].load(Ordering::Relaxed)) * 4.0;
+                    handler.camera_velocity[0][3].swap(increased.to_bits(), Ordering::Relaxed);
+                }
+            }
+            Event::KeyUp { keycode, .. } => {
+                w &= keycode != Some(Keycode::W);
+                a &= keycode != Some(Keycode::A);
+                s &= keycode != Some(Keycode::S);
+                d &= keycode != Some(Keycode::D);
+                ctrl &= keycode != Some(Keycode::LCtrl);
+                space &= keycode != Some(Keycode::Space);
+                shift &= keycode != Some(Keycode::LShift);
+
+                let result = make_thing(w,a,s,d,ctrl,space);
+                handler.camera_velocity[0][0].swap(result[0].to_bits(), Ordering::Relaxed);
+                handler.camera_velocity[0][1].swap(result[1].to_bits(), Ordering::Relaxed);
+                handler.camera_velocity[0][2].swap(result[2].to_bits(), Ordering::Relaxed);
+
+                if keycode == Some(Keycode::LShift) {
+                    let reduced = f32::from_bits(handler.camera_velocity[0][3].load(Ordering::Relaxed)) / 4.0;
+                    handler.camera_velocity[0][3].swap(reduced.to_bits(), Ordering::Relaxed);
+                }
+            }
+            Event::MouseWheel { x, y, .. } => {
+                let mut multiplier = f32::from_bits(handler.camera_velocity[0][3].load(Ordering::Relaxed));
+
+                let incrementor = if x.abs() > y.abs() {
+                    x
+                }
+                else {
+                    y
+                };
+
+                multiplier += (incrementor as f32) * if shift { 4.0 } else { 1.0 } * 0.125;
+                handler.camera_velocity[0][3].swap(multiplier.max(1.0).to_bits(), Ordering::Relaxed);
+            }
+            _ => {
+
+                // println!("{n:?}")
+            }
+        }
+    }
+
+
     Ok(())
 }
 
@@ -176,67 +327,65 @@ fn load_tags_from_cache(cache: &Path) -> Result<(TagPath, &'static Engine, HashM
 
 pub struct FlycamTestHandler {
     renderer: Option<Arc<Mutex<Renderer>>>,
-    window: Option<Window>,
     scenario_data: ScenarioData,
     viewports: usize,
     pause_rendering_flag: Arc<AtomicBool>,
 
-    camera_velocity: [f64; 3],
-    camera_speed_multiplier: f64,
+    camera_velocity: Arc<[[AtomicU32; 4]; 4]>,
 }
 
-impl ApplicationHandler for FlycamTestHandler {
-    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        let mut attributes = Window::default_attributes();
-        attributes.inner_size = Some(Size::Physical(PhysicalSize::new(1280, 960)));
-        attributes.min_inner_size = Some(Size::Physical(PhysicalSize::new(64, 64)));
-        attributes.title = format!("Magellanicus - {path}", path = self.scenario_data.scenario_path);
-
-        let window = event_loop.create_window(attributes).unwrap();
-        let PhysicalSize { width, height } = window.inner_size();
-        let renderer =
-            unsafe {
-                Renderer::new(&window, RendererParameters {
-                    resolution: Resolution { width, height },
-                    number_of_viewports: self.viewports,
-                    vsync: false
-                })
-            };
-
-        self.window = Some(window);
-
-        match renderer {
-            Ok(r) => self.renderer = Some(Arc::new(Mutex::new(r))),
-            Err(e) => {
-                eprintln!("Failed to initialize renderer: {e}");
-                return event_loop.exit();
-            }
-        }
-
-        if let Err(e) = self.initialize_and_start() {
-            eprintln!("{e}");
-            return event_loop.exit();
-        }
-    }
-
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
-        match event {
-            WindowEvent::CloseRequested => {
-                event_loop.exit();
-                return;
-            },
-            WindowEvent::Resized(new_size) => {
-                let mut lock = self.lock_renderer();
-                lock.renderer.rebuild_swapchain(RendererParameters {
-                    number_of_viewports: 1,
-                    vsync: false,
-                    resolution: Resolution { width: new_size.width, height: new_size.height }
-                }).unwrap();
-            },
-            _ => ()
-        }
-    }
-}
+// impl ApplicationHandler for FlycamTestHandler {
+//     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+//         let mut attributes = Window::default_attributes();
+//         attributes.inner_size = Some(Size::Physical(PhysicalSize::new(1280, 960)));
+//         attributes.min_inner_size = Some(Size::Physical(PhysicalSize::new(64, 64)));
+//         attributes.title = format!("Magellanicus - {path}", path = self.scenario_data.scenario_path);
+//
+//         let window = event_loop.create_window(attributes).unwrap();
+//         let PhysicalSize { width, height } = window.inner_size();
+//         let renderer =
+//             unsafe {
+//                 Renderer::new(&window, RendererParameters {
+//                     resolution: Resolution { width, height },
+//                     number_of_viewports: self.viewports,
+//                     vsync: false
+//                 })
+//             };
+//
+//         self.window = Some(window);
+//
+//         match renderer {
+//             Ok(r) => self.renderer = Some(Arc::new(Mutex::new(r))),
+//             Err(e) => {
+//                 eprintln!("Failed to initialize renderer: {e}");
+//                 return event_loop.exit();
+//             }
+//         }
+//
+//         if let Err(e) = self.initialize_and_start() {
+//             eprintln!("{e}");
+//             return event_loop.exit();
+//         }
+//     }
+//
+//     fn window_event(&mut self, event_loop: &ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
+//         match event {
+//             WindowEvent::CloseRequested => {
+//                 event_loop.exit();
+//                 return;
+//             },
+//             WindowEvent::Resized(new_size) => {
+//                 let mut lock = self.lock_renderer();
+//                 lock.renderer.rebuild_swapchain(RendererParameters {
+//                     number_of_viewports: 1,
+//                     vsync: false,
+//                     resolution: Resolution { width: new_size.width, height: new_size.height }
+//                 }).unwrap();
+//             },
+//             _ => ()
+//         }
+//     }
+// }
 
 impl FlycamTestHandler {
     fn lock_renderer(&self) -> PriorityLock {
@@ -304,8 +453,9 @@ impl FlycamTestHandler {
 
         let render_ref = Arc::downgrade(self.renderer.as_ref().unwrap());
         let pause_rendering_ref = self.pause_rendering_flag.clone();
+        let velocity = self.camera_velocity.clone();
         std::thread::spawn(move || {
-            run_renderer_thread(render_ref, pause_rendering_ref);
+            run_renderer_thread(render_ref, pause_rendering_ref, velocity);
         });
 
         Ok(())
@@ -713,16 +863,45 @@ impl FlycamTestHandler {
     }
 }
 
-fn run_renderer_thread(renderer: Weak<Mutex<Renderer>>, pause_rendering: Arc<AtomicBool>) {
-    let mut time_start = Instant::now();
+fn run_renderer_thread(renderer: Weak<Mutex<Renderer>>, pause_rendering: Arc<AtomicBool>, velocity: Arc<[[AtomicU32; 4]; 4]>) {
+    let time_start = Instant::now();
+    let mut last_loop = 0.0;
+    let mut time_since_last_fps = Instant::now();
     let mut frames_rendered = 0u64;
     while let Some(renderer) = renderer.upgrade() {
         if pause_rendering.load(Ordering::Relaxed) {
-            std::thread::sleep(Duration::from_millis(10));
             continue;
         }
 
         let mut renderer = renderer.lock().unwrap();
+
+        let ms_since_start = (Instant::now() - time_start).as_millis() as f64 / 1000.0;
+
+        for v in 0..renderer.get_viewport_count().min(velocity.len()) {
+            let vel = &velocity[v];
+
+            let multiplier = f32::from_bits(vel[3].load(Ordering::Relaxed));
+            let delta = (ms_since_start - last_loop) as f32 * 2.0 * multiplier;
+            let forward = f32::from_bits(vel[0].load(Ordering::Relaxed)) * delta;
+            let side = f32::from_bits(vel[1].load(Ordering::Relaxed)) * delta;
+            let up = f32::from_bits(vel[2].load(Ordering::Relaxed)) * delta;
+
+            let mut camera = renderer.get_camera(v);
+            let mut position = Vec3::from(camera.position);
+            let rotation = Vec3::from(camera.rotation);
+
+            position += Vec3::new(rotation.x * forward, rotation.y * forward, rotation.z * forward);
+
+            let q = Vec3::new(rotation.x, rotation.y, 0.0).normalize();
+            position -= Vec3::new(q.y * side, -q.x * side, 0.0);
+            position += Vec3::new(0.0, 0.0, up);
+
+            camera.position = position.to_array();
+            renderer.set_camera_for_viewport(v, camera);
+        }
+
+        last_loop = ms_since_start;
+
         let frame_result = renderer.draw_frame();
         drop(renderer);
 
@@ -739,12 +918,12 @@ fn run_renderer_thread(renderer: Weak<Mutex<Renderer>>, pause_rendering: Arc<Ato
         }
 
         frames_rendered += 1;
-        let time_taken = Instant::now() - time_start;
+        let time_taken = Instant::now() - time_since_last_fps;
         if time_taken.as_secs() >= 1 {
             let frames_per_second = (frames_rendered as f64) / (time_taken.as_micros() as f64 / 1000000.0);
             println!("FPS: {frames_per_second}");
             frames_rendered = 0;
-            time_start = Instant::now();
+            time_since_last_fps = Instant::now();
         }
     }
 }

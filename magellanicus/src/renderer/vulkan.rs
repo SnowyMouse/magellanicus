@@ -179,7 +179,7 @@ impl VulkanRenderer {
             renderer.renderer.memory_allocator.clone(),
             ImageCreateInfo {
                 extent: color_view.image().extent(),
-                format: Format::D16_UNORM,
+                format: Format::D32_SFLOAT,
                 image_type: ImageType::Dim2d,
                 usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT,
                 ..Default::default()
@@ -221,7 +221,7 @@ impl VulkanRenderer {
                 i.camera.fov,
                 viewport.extent[0] / viewport.extent[1],
                 0.05,
-                1000.0
+                2250.0
             );
             let view = Mat4::look_to_lh(
                 i.camera.position.into(),
@@ -383,7 +383,7 @@ impl VulkanRenderer {
             CommandBufferInheritanceInfo {
                 render_pass: Some(CommandBufferInheritanceRenderPassType::BeginRendering(CommandBufferInheritanceRenderingInfo {
                     color_attachment_formats: vec![Some(self.output_format)],
-                    depth_attachment_format: Some(Format::D16_UNORM),
+                    depth_attachment_format: Some(Format::D32_SFLOAT),
                     ..CommandBufferInheritanceRenderingInfo::default()
                 })),
                 ..CommandBufferInheritanceInfo::default()

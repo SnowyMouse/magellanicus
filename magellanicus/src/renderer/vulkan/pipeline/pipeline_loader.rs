@@ -90,7 +90,7 @@ pub fn load_pipeline(
 
     let subpass = PipelineRenderingCreateInfo {
         color_attachment_formats: vec![Some(color_format)],
-        depth_attachment_format: Some(Format::D16_UNORM),
+        depth_attachment_format: Some(Format::D32_SFLOAT),
         ..Default::default()
     };
 
