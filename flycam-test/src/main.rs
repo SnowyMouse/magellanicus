@@ -178,6 +178,7 @@ fn main() -> Result<(), String> {
     let mut space = false;
     let mut ctrl = false;
     let mut shift = false;
+    let mut viewport_mod = 0;
 
     fn make_thing(w: bool, a: bool, s: bool, d: bool, ctrl: bool, space: bool) -> [f32; 3] {
         let mut forward = 1.0 * (w as u32 as f32) - 1.0 * (s as u32 as f32);
@@ -200,13 +201,21 @@ fn main() -> Result<(), String> {
             }
             Event::MouseMotion { xrel, yrel, .. } => {
                 let mut renderer = handler.lock_renderer();
-                let mut camera = renderer.renderer.get_camera(0);
+                let mut camera = renderer.renderer.get_camera(viewport_mod);
                 camera.rotation = rotate(camera.rotation, xrel as f32 * 0.0015, yrel as f32 * 0.0015);
-                renderer.renderer.set_camera_for_viewport(0, camera);
+                renderer.renderer.set_camera_for_viewport(viewport_mod, camera);
             }
             Event::KeyDown { keycode, repeat, .. } => {
                 if repeat == true {
                     continue
+                }
+
+                if keycode == Some(Keycode::Escape) {
+                    break;
+                }
+
+                if keycode == Some(Keycode::Tab) {
+                    viewport_mod = (viewport_mod + 1) % viewports;
                 }
 
                 w |= keycode == Some(Keycode::W);
@@ -218,13 +227,13 @@ fn main() -> Result<(), String> {
                 shift |= keycode == Some(Keycode::LShift);
 
                 let result = make_thing(w,a,s,d,ctrl,space);
-                handler.camera_velocity[0][0].swap(result[0].to_bits(), Ordering::Relaxed);
-                handler.camera_velocity[0][1].swap(result[1].to_bits(), Ordering::Relaxed);
-                handler.camera_velocity[0][2].swap(result[2].to_bits(), Ordering::Relaxed);
+                handler.camera_velocity[viewport_mod][0].swap(result[0].to_bits(), Ordering::Relaxed);
+                handler.camera_velocity[viewport_mod][1].swap(result[1].to_bits(), Ordering::Relaxed);
+                handler.camera_velocity[viewport_mod][2].swap(result[2].to_bits(), Ordering::Relaxed);
 
                 if keycode == Some(Keycode::LShift) {
                     let increased = f32::from_bits(handler.camera_velocity[0][3].load(Ordering::Relaxed)) * 4.0;
-                    handler.camera_velocity[0][3].swap(increased.to_bits(), Ordering::Relaxed);
+                    handler.camera_velocity[viewport_mod][3].swap(increased.to_bits(), Ordering::Relaxed);
                 }
             }
             Event::KeyUp { keycode, repeat, .. } => {
@@ -241,17 +250,17 @@ fn main() -> Result<(), String> {
                 shift &= keycode != Some(Keycode::LShift);
 
                 let result = make_thing(w,a,s,d,ctrl,space);
-                handler.camera_velocity[0][0].swap(result[0].to_bits(), Ordering::Relaxed);
-                handler.camera_velocity[0][1].swap(result[1].to_bits(), Ordering::Relaxed);
-                handler.camera_velocity[0][2].swap(result[2].to_bits(), Ordering::Relaxed);
+                handler.camera_velocity[viewport_mod][0].swap(result[0].to_bits(), Ordering::Relaxed);
+                handler.camera_velocity[viewport_mod][1].swap(result[1].to_bits(), Ordering::Relaxed);
+                handler.camera_velocity[viewport_mod][2].swap(result[2].to_bits(), Ordering::Relaxed);
 
                 if keycode == Some(Keycode::LShift) {
-                    let reduced = f32::from_bits(handler.camera_velocity[0][3].load(Ordering::Relaxed)) / 4.0;
-                    handler.camera_velocity[0][3].swap(reduced.to_bits(), Ordering::Relaxed);
+                    let reduced = f32::from_bits(handler.camera_velocity[viewport_mod][3].load(Ordering::Relaxed)) / 4.0;
+                    handler.camera_velocity[viewport_mod][3].swap(reduced.to_bits(), Ordering::Relaxed);
                 }
             }
             Event::MouseWheel { x, y, .. } => {
-                let mut multiplier = f32::from_bits(handler.camera_velocity[0][3].load(Ordering::Relaxed));
+                let mut multiplier = f32::from_bits(handler.camera_velocity[viewport_mod][3].load(Ordering::Relaxed));
 
                 let incrementor = if x.abs() > y.abs() {
                     x
@@ -261,7 +270,7 @@ fn main() -> Result<(), String> {
                 };
 
                 multiplier += (incrementor as f32) * if shift { 4.0 } else { 1.0 } * 0.125;
-                handler.camera_velocity[0][3].swap(multiplier.max(1.0).to_bits(), Ordering::Relaxed);
+                handler.camera_velocity[viewport_mod][3].swap(multiplier.max(1.0).to_bits(), Ordering::Relaxed);
             }
             _ => {
 
