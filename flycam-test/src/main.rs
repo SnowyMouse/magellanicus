@@ -204,7 +204,11 @@ fn main() -> Result<(), String> {
                 camera.rotation = rotate(camera.rotation, xrel as f32 * 0.0015, yrel as f32 * 0.0015);
                 renderer.renderer.set_camera_for_viewport(0, camera);
             }
-            Event::KeyDown { keycode, .. } => {
+            Event::KeyDown { keycode, repeat, .. } => {
+                if repeat == true {
+                    continue
+                }
+
                 w |= keycode == Some(Keycode::W);
                 a |= keycode == Some(Keycode::A);
                 s |= keycode == Some(Keycode::S);
@@ -223,7 +227,11 @@ fn main() -> Result<(), String> {
                     handler.camera_velocity[0][3].swap(increased.to_bits(), Ordering::Relaxed);
                 }
             }
-            Event::KeyUp { keycode, .. } => {
+            Event::KeyUp { keycode, repeat, .. } => {
+                if repeat == true {
+                    continue
+                }
+
                 w &= keycode != Some(Keycode::W);
                 a &= keycode != Some(Keycode::A);
                 s &= keycode != Some(Keycode::S);
