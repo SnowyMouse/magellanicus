@@ -334,59 +334,6 @@ pub struct FlycamTestHandler {
     camera_velocity: Arc<[[AtomicU32; 4]; 4]>,
 }
 
-// impl ApplicationHandler for FlycamTestHandler {
-//     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-//         let mut attributes = Window::default_attributes();
-//         attributes.inner_size = Some(Size::Physical(PhysicalSize::new(1280, 960)));
-//         attributes.min_inner_size = Some(Size::Physical(PhysicalSize::new(64, 64)));
-//         attributes.title = format!("Magellanicus - {path}", path = self.scenario_data.scenario_path);
-//
-//         let window = event_loop.create_window(attributes).unwrap();
-//         let PhysicalSize { width, height } = window.inner_size();
-//         let renderer =
-//             unsafe {
-//                 Renderer::new(&window, RendererParameters {
-//                     resolution: Resolution { width, height },
-//                     number_of_viewports: self.viewports,
-//                     vsync: false
-//                 })
-//             };
-//
-//         self.window = Some(window);
-//
-//         match renderer {
-//             Ok(r) => self.renderer = Some(Arc::new(Mutex::new(r))),
-//             Err(e) => {
-//                 eprintln!("Failed to initialize renderer: {e}");
-//                 return event_loop.exit();
-//             }
-//         }
-//
-//         if let Err(e) = self.initialize_and_start() {
-//             eprintln!("{e}");
-//             return event_loop.exit();
-//         }
-//     }
-//
-//     fn window_event(&mut self, event_loop: &ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
-//         match event {
-//             WindowEvent::CloseRequested => {
-//                 event_loop.exit();
-//                 return;
-//             },
-//             WindowEvent::Resized(new_size) => {
-//                 let mut lock = self.lock_renderer();
-//                 lock.renderer.rebuild_swapchain(RendererParameters {
-//                     number_of_viewports: 1,
-//                     vsync: false,
-//                     resolution: Resolution { width: new_size.width, height: new_size.height }
-//                 }).unwrap();
-//             },
-//             _ => ()
-//         }
-//     }
-// }
-
 impl FlycamTestHandler {
     fn lock_renderer(&self) -> PriorityLock {
         while !self.pause_rendering_flag.swap(true, Ordering::Relaxed) {
@@ -435,13 +382,13 @@ impl FlycamTestHandler {
             .enumerate()
             .take(renderer.get_viewport_count()) {
             renderer.set_camera_for_viewport(vi, magellanicus::renderer::Camera {
-                fov: 70.0f32.to_radians(),
                 position: [location.position.x as f32, location.position.y as f32, location.position.z as f32 + 0.7],
                 rotation: {
                     let x = location.facing.angle.cos();
                     let y = location.facing.angle.sin();
                     [x, y, 0.0]
                 },
+                ..Default::default()
             });
         }
 

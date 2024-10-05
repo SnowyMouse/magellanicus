@@ -45,7 +45,7 @@ pub struct Camera {
 impl Default for Camera {
     fn default() -> Self {
         Self {
-            fov: 70.0f32.to_radians(),
+            fov: 56.0f32.to_radians(),
             position: Vec3::default().to_array(),
             rotation: [0.0, 1.0, 0.0]
         }
