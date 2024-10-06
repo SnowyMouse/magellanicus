@@ -9,7 +9,7 @@ use std::string::String;
 use std::sync::Arc;
 use std::vec::Vec;
 use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer};
-use vulkano::image::sampler::{Sampler, SamplerCreateInfo};
+use vulkano::image::sampler::{Sampler, SamplerAddressMode, SamplerCreateInfo};
 use vulkano::image::view::{ImageView, ImageViewCreateInfo};
 
 #[derive(Default)]
@@ -41,7 +41,14 @@ impl VulkanBSPData {
 
                 let sampler = Sampler::new(
                     renderer.renderer.device.clone(),
-                    SamplerCreateInfo::simple_repeat_linear()
+                    SamplerCreateInfo {
+                        address_mode: [
+                            SamplerAddressMode::ClampToEdge,
+                            SamplerAddressMode::ClampToEdge,
+                            SamplerAddressMode::ClampToEdge
+                        ],
+                        ..SamplerCreateInfo::simple_repeat_linear_no_mipmap()
+                    }
                 )?;
 
                 images.insert(i, (lightmap, sampler));

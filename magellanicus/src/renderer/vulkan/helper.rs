@@ -36,6 +36,7 @@ pub unsafe fn load_vulkan_and_get_queue(surface: &(impl HasRawWindowHandle + Has
     }.clone();
 
     let required_device_features = Features {
+        sampler_anisotropy: true,
         ..Features::empty()
     };
 
@@ -76,6 +77,7 @@ fn create_device_and_queues(physical_device: Arc<PhysicalDevice>, device_extensi
             enabled_features: Features {
                 dynamic_rendering: true,
                 extended_dynamic_state: true,
+                sampler_anisotropy: true,
                 ..Features::default()
             },
             ..Default::default()
