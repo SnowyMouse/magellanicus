@@ -32,7 +32,7 @@ impl Default for PlayerViewport {
 
 #[derive(Copy, Clone, Debug)]
 pub struct Camera {
-    /// FoV in radians (default = 70 degrees)
+    /// FoV in radians (default = 56 degrees)
     pub fov: f32,
 
     /// Position in the map of the camera

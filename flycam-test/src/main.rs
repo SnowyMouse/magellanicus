@@ -245,6 +245,36 @@ fn main() -> Result<(), String> {
                     continue;
                 }
 
+                if keycode == Some(Keycode::R) {
+                    let Some(current_bsp) = handler
+                        .scenario_data
+                        .scenario_tag
+                        .structure_bsps
+                        .items[current_bsp_index]
+                        .structure_bsp
+                        .path() else {
+                        println!("Unable to respawn! No BSP loaded.");
+                        continue;
+                    };
+
+                    let bsp: &ScenarioStructureBSP = handler
+                        .scenario_data
+                        .tags[current_bsp]
+                        .get_ref()
+                        .unwrap();
+
+                    let x = (bsp.world_bounds_x.upper + bsp.world_bounds_x.lower) / 2.0;
+                    let y = (bsp.world_bounds_y.upper + bsp.world_bounds_y.lower) / 2.0;
+                    let z = (bsp.world_bounds_z.upper + bsp.world_bounds_z.lower) / 2.0;
+
+                    let mut renderer = handler.lock_renderer();
+                    let mut camera = renderer.renderer.get_camera_for_viewport(viewport_mod);
+                    camera.position = [x as f32, y as f32, z as f32];
+                    renderer.renderer.set_camera_for_viewport(viewport_mod, camera);
+                    println!("Teleported to the center of the BSP.");
+                    continue;
+                }
+
                 w |= keycode == Some(Keycode::W);
                 a |= keycode == Some(Keycode::A);
                 s |= keycode == Some(Keycode::S);
