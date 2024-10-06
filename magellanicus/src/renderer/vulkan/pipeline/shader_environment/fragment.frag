@@ -46,9 +46,12 @@ void main() {
         base_map_texture_coordinates * shader_environment_data.bump_map_scale
     );
 
-    if((shader_environment_data.flags & 1) == 1 && (base_map_color.a <= 0.0 || bump_color.a <= 0.0)) {
+    // Alpha testing
+    if((shader_environment_data.flags & 1) == 1 && (min(base_map_color.a, bump_color.a) < 0.5)) {
         discard;
     }
+
+    bump_color.a = 1.0;
 
     vec4 primary_detail_map_color = texture(
         sampler2D(primary_detail_map, map_sampler),
