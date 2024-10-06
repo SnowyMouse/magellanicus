@@ -1,7 +1,8 @@
 #![allow(dead_code)]
 
-use magellanicus::renderer::{AddBSPParameter, AddBSPParameterLightmapMaterial, AddBSPParameterLightmapSet, AddBitmapBitmapParameter, AddBitmapParameter, AddBitmapSequenceParameter, AddShaderBasicShaderData, AddShaderData, AddShaderParameter, AddSkyParameter, BSP3DNode, BSP3DNodeChild, BSP3DPlane, BSPCluster, BSPData, BSPLeaf, BSPPortal, BSPSubcluster, BitmapFormat, BitmapSprite, BitmapType, Renderer, RendererParameters, Resolution, ShaderType};
+use magellanicus::renderer::{AddBSPParameter, AddBSPParameterLightmapMaterial, AddBSPParameterLightmapSet, AddBitmapBitmapParameter, AddBitmapParameter, AddBitmapSequenceParameter, AddShaderBasicShaderData, AddShaderData, AddShaderEnvironmentShaderData, AddShaderParameter, AddSkyParameter, BSP3DNode, BSP3DNodeChild, BSP3DPlane, BSPCluster, BSPData, BSPLeaf, BSPPortal, BSPSubcluster, BitmapFormat, BitmapSprite, BitmapType, Renderer, RendererParameters, Resolution, ShaderType};
 use std::collections::HashMap;
+use std::mem::transmute;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
@@ -538,10 +539,24 @@ impl FlycamTestHandler {
             TagGroup::ShaderEnvironment => {
                 let tag = tag.get_ref::<ShaderEnvironment>().unwrap();
                 AddShaderParameter {
-                    data: AddShaderData::BasicShader(AddShaderBasicShaderData {
-                        bitmap: tag.diffuse.base_map.path().map(|b| b.to_string()),
-                        shader_type: ShaderType::Environment,
-                        alpha_tested: tag.properties.flags.alpha_tested
+                    data: AddShaderData::ShaderEnvironment(AddShaderEnvironmentShaderData {
+                        alpha_tested: tag.properties.flags.alpha_tested,
+                        base_map: tag.diffuse.base_map.path().map(|p| p.to_string()),
+                        primary_detail_map: tag.diffuse.primary_detail_map.path().map(|p| p.to_string()),
+                        secondary_detail_map: tag.diffuse.secondary_detail_map.path().map(|p| p.to_string()),
+                        micro_detail_map: tag.diffuse.micro_detail_map.path().map(|p| p.to_string()),
+                        bump_map: tag.bump.bump_map.path().map(|p| p.to_string()),
+                        reflection_cube_map: tag.reflection.reflection_cube_map.path().map(|p| p.to_string()),
+                        primary_detail_map_scale: tag.diffuse.primary_detail_map_scale as f32,
+                        secondary_detail_map_scale: tag.diffuse.secondary_detail_map_scale as f32,
+                        micro_detail_map_scale: tag.diffuse.micro_detail_map_scale as f32,
+                        bump_map_scale: tag.bump.bump_map_scale as f32,
+
+                        // SAFETY: 🔥🐶🔥 This is fine 🔥🐶🔥
+                        shader_environment_type: unsafe { transmute(tag.properties.shader_environment_type as u32) },
+                        detail_map_function: unsafe { transmute(tag.diffuse.detail_map_function as u32) },
+                        micro_detail_map_function: unsafe { transmute(tag.diffuse.micro_detail_map_function as u32) },
+                        reflection_type: unsafe { transmute(tag.reflection._type as u32) },
                     })
                 }
             },

@@ -1,15 +1,8 @@
 #version 450
 
-layout(location = 0) in vec3 position;
-layout(location = 0) out vec3 color;
+#include "../include/material.vert"
 
-layout(set = 0, binding = 0) uniform ModelData {
-    mat4 world;
-    mat4 view;
-    mat4 proj;
-    vec3 offset;
-    mat3 rotation;
-} uniforms;
+layout(location = 0) out vec3 color;
 
 void main() {
     mat4 worldview = uniforms.view * uniforms.world;

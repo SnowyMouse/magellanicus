@@ -9,6 +9,7 @@ pub mod solid_color;
 pub mod simple_texture;
 mod pipeline_loader;
 mod color_box;
+pub mod shader_environment;
 
 pub trait VulkanPipelineData: Send + Sync + 'static {
     fn get_pipeline(&self) -> Arc<GraphicsPipeline>;
@@ -20,6 +21,7 @@ pub fn load_all_pipelines(device: Arc<Device>, color_format: Format) -> MResult<
     pipelines.insert(VulkanPipelineType::SolidColor, Arc::new(solid_color::SolidColorShader::new(device.clone(), color_format)?));
     pipelines.insert(VulkanPipelineType::SimpleTexture, Arc::new(simple_texture::SimpleTextureShader::new(device.clone(), color_format)?));
     pipelines.insert(VulkanPipelineType::ColorBox, Arc::new(color_box::ColorBox::new(device.clone(), color_format)?));
+    pipelines.insert(VulkanPipelineType::ShaderEnvironment, Arc::new(shader_environment::ShaderEnvironment::new(device.clone(), color_format)?));
 
     Ok(pipelines)
 }
@@ -37,4 +39,7 @@ pub enum VulkanPipelineType {
 
     /// Draw a box of a given color.
     ColorBox,
+
+    /// shader_environment
+    ShaderEnvironment,
 }

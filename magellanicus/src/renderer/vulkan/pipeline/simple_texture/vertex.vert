@@ -1,19 +1,12 @@
 #version 450
 
-layout(location = 0) in vec3 position;
-layout(location = 1) in vec2 texture_coords;
-layout(location = 2) in vec2 lightmap_texture_coords;
+#define USE_TEXTURE_COORDS
+#define USE_LIGHTMAPS
+
+#include "../include/material.vert"
 
 layout(location = 0) out vec2 texcoords;
 layout(location = 1) out vec2 lightmap_texcoords;
-
-layout(set = 0, binding = 0) uniform ModelData {
-    mat4 world;
-    mat4 view;
-    mat4 proj;
-    vec3 offset;
-    mat3 rotation;
-} uniforms;
 
 void main() {
     mat4 worldview = uniforms.view * uniforms.world;

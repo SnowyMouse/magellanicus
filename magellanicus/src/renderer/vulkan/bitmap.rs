@@ -1,7 +1,7 @@
 use crate::error::{Error, MResult};
 use crate::renderer::mipmap_iterator::{MipmapTextureIterator, MipmapType};
 use crate::renderer::vulkan::{default_allocation_create_info, VulkanRenderer};
-use crate::renderer::{AddBitmapBitmapParameter, BitmapFormat, BitmapType};
+use crate::renderer::{decode_p8_to_a8r8g8b8le, AddBitmapBitmapParameter, BitmapFormat, BitmapType};
 use std::num::NonZeroUsize;
 use std::string::ToString;
 use std::sync::Arc;
@@ -93,10 +93,7 @@ impl VulkanBitmapData {
             BitmapFormat::P8 => {
                 transcoded_pixels.reserve_exact(parameter.data.len() * 4);
                 for pixel in parameter.data.iter() {
-                    transcoded_pixels.push(*pixel);
-                    transcoded_pixels.push(*pixel);
-                    transcoded_pixels.push(*pixel);
-                    transcoded_pixels.push(0xFF);
+                    transcoded_pixels.extend_from_slice(&decode_p8_to_a8r8g8b8le(*pixel));
                 }
                 (BitmapFormat::A8R8G8B8, Format::B8G8R8A8_UNORM, &transcoded_pixels)
             }

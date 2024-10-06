@@ -1,6 +1,6 @@
 use crate::error::MResult;
 use crate::renderer::vulkan::{VulkanMaterial, VulkanPipelineType};
-use crate::renderer::{AddShaderBasicShaderData, Renderer};
+use crate::renderer::{AddShaderBasicShaderData, DefaultType, Renderer};
 use std::eprintln;
 use std::sync::Arc;
 use vulkano::command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer};
@@ -18,12 +18,11 @@ pub struct VulkanSimpleShaderMaterial {
 
 impl VulkanSimpleShaderMaterial {
     pub fn new(renderer: &mut Renderer, add_shader_parameter: AddShaderBasicShaderData) -> MResult<Self> {
-        let diffuse = if let Some(b) = add_shader_parameter.bitmap.as_ref() {
-            renderer.bitmaps[b].bitmaps[0].vulkan.image.clone()
-        }
-        else {
-            renderer.get_default_2d().vulkan.image.clone()
-        };
+        let diffuse = renderer
+            .get_or_default_2d(&add_shader_parameter.bitmap, 0, DefaultType::White)
+            .vulkan
+            .image
+            .clone();
 
         if diffuse.array_layers() != 1 || diffuse.image_type() != ImageType::Dim2d {
             eprintln!("Warning: Can't display {} in a simple shader material. Using fallback...", add_shader_parameter.bitmap.as_ref().unwrap());

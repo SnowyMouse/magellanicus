@@ -6,6 +6,7 @@ use crate::renderer::vulkan::material::simple_shader::VulkanSimpleShaderMaterial
 use crate::renderer::{AddShaderData, AddShaderParameter, Renderer};
 use std::sync::Arc;
 use vulkano::command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer};
+use crate::renderer::vulkan::material::shader_environment::VulkanShaderEnvironmentMaterial;
 
 /// Material shader data
 ///
@@ -34,21 +35,12 @@ impl VulkanMaterialShaderData {
                 let shader = Arc::new(VulkanSimpleShaderMaterial::new(renderer, shader)?);
                 Ok(Self { pipeline_data: shader })
             }
+            AddShaderData::ShaderEnvironment(shader) => {
+                let shader = Arc::new(VulkanShaderEnvironmentMaterial::new(renderer, shader)?);
+                Ok(Self { pipeline_data: shader })
+            }
         }
     }
-}
-
-pub enum VulkanMaterialShaderStage {
-    Diffuse,
-    Reflection,
-    Detail,
-    Lightmap,
-}
-
-#[derive(Copy, Clone, PartialEq)]
-pub enum VulkanMaterialTextureCoordsType {
-    Model,
-    Lightmaps
 }
 
 pub trait VulkanMaterial: Send + Sync + 'static {

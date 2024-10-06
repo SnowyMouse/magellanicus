@@ -1,11 +1,12 @@
 #version 450
 
-layout(location = 0) in vec2 tex_coords;
-layout(location = 1) in vec2 lightmap_texcoords;
+#define USE_LIGHTMAPS
+#include "../include/material.frag"
+
 layout(location = 0) out vec4 f_color;
 
-layout(set = 1, binding = 0) uniform sampler lightmap_sampler;
-layout(set = 1, binding = 1) uniform texture2D lightmap_texture;
+layout(location = 0) in vec2 tex_coords;
+layout(location = 1) in vec2 lightmap_texcoords;
 
 layout(set = 2, binding = 0) uniform sampler s;
 layout(set = 2, binding = 1) uniform texture2D tex;

@@ -310,7 +310,48 @@ impl Renderer {
         VulkanRenderer::draw_frame(self)
     }
 
-    fn get_default_2d(&self) -> &BitmapBitmap {
-        &self.bitmaps[&self.default_bitmaps.default_2d].bitmaps[1]
+    fn get_default_2d(&self, default_type: DefaultType) -> &BitmapBitmap {
+        &self.bitmaps[&self.default_bitmaps.default_2d].bitmaps[default_type as usize]
     }
+    fn get_or_default_2d(&self, bitmap: &Option<String>, bitmap_index: usize, default_type: DefaultType) -> &BitmapBitmap {
+        match bitmap.as_ref() {
+            Some(n) => &self.bitmaps[n].bitmaps[bitmap_index],
+            None => &self.get_default_2d(default_type)
+        }
+    }
+    fn get_or_default_3d(&self, bitmap: &Option<String>, bitmap_index: usize, default_type: DefaultType) -> &BitmapBitmap {
+        match bitmap.as_ref() {
+            Some(n) => &self.bitmaps[n].bitmaps[bitmap_index],
+            None => &self.bitmaps[&self.default_bitmaps.default_3d].bitmaps[default_type as usize]
+        }
+    }
+    fn get_or_default_cubemap(&self, bitmap: &Option<String>, bitmap_index: usize, default_type: DefaultType) -> &BitmapBitmap {
+        match bitmap.as_ref() {
+            Some(n) => &self.bitmaps[n].bitmaps[bitmap_index],
+            None => &self.bitmaps[&self.default_bitmaps.default_cubemap].bitmaps[default_type as usize]
+        }
+    }
+}
+
+#[repr(usize)]
+enum DefaultType {
+    /// Describes a map with all channels set to 0x00.
+    ///
+    /// This provides a texture that does nothing on alpha blend, min, add, or subtract.
+    Null,
+
+    /// Describes a map with all channels set to 0xFF.
+    ///
+    /// This provides a texture that does nothing on multiply/min.
+    White,
+
+    /// Describes a map with red, green, and blue set to 0x7F and alpha set to 0xFF.
+    ///
+    /// This provides a texture that does nothing on double multiply.
+    Gray,
+
+    /// Describes a map with red and green set to 0x7F and blue and alpha set to 0xFF.
+    ///
+    /// This provides a neutral vector map.
+    Vector
 }

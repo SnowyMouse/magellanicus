@@ -14,7 +14,7 @@ use crate::error::{Error, MResult};
 use crate::renderer::data::BSP;
 use crate::renderer::vulkan::helper::{build_swapchain, LoadedVulkan};
 use crate::renderer::vulkan::vertex::{VulkanModelData, VulkanModelVertex};
-use crate::renderer::{Renderer, RendererParameters, Resolution};
+use crate::renderer::{DefaultType, Renderer, RendererParameters, Resolution};
 pub use bitmap::*;
 pub use bsp::*;
 pub use geometry::*;
@@ -455,7 +455,7 @@ fn upload_lightmap_data(
         .and_then(|(b, i)| b.vulkan.lightmap_images.get(&i))
         .map(|b| b.to_owned())
         .unwrap_or_else(|| {
-            let image = ImageView::new_default(renderer.get_default_2d().vulkan.image.clone()).unwrap();
+            let image = ImageView::new_default(renderer.get_default_2d(DefaultType::White).vulkan.image.clone()).unwrap();
             (image, renderer.renderer.default_2d_sampler.clone())
         });
 
