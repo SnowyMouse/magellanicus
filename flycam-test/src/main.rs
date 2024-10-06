@@ -101,6 +101,11 @@ fn main() -> Result<(), String> {
         .expect("scenario wasn't scenario???")
         .to_owned();
 
+    let current_bsp_count = scenario_tag.structure_bsps.items.len();
+    if current_bsp_count == 0 {
+        return Err("No BSPs in the scenario.".to_owned());
+    }
+
     let scenario_data = ScenarioData {
         tags: dependencies,
         scenario_path,
@@ -156,6 +161,7 @@ fn main() -> Result<(), String> {
     let mut ctrl = false;
     let mut shift = false;
     let mut viewport_mod = 0;
+    let mut current_bsp_index = 0usize;
 
     fn make_thing(w: bool, a: bool, s: bool, d: bool, ctrl: bool, space: bool) -> [f32; 3] {
         let mut forward = 1.0 * (w as u32 as f32) - 1.0 * (s as u32 as f32);
@@ -190,6 +196,36 @@ fn main() -> Result<(), String> {
 
                 if keycode == Some(Keycode::Tab) {
                     viewport_mod = (viewport_mod + 1) % viewports;
+                    continue;
+                }
+
+                if keycode == Some(Keycode::PageUp) || keycode == Some(Keycode::PageDown) {
+                    if current_bsp_count == 1 {
+                        println!("Can't switch BSPs because there is only one.");
+                        continue;
+                    }
+
+                    if keycode == Some(Keycode::PageUp) {
+                        current_bsp_index = (current_bsp_index + 1) % current_bsp_count;
+                    }
+                    else {
+                        current_bsp_index = current_bsp_index.checked_sub(1).unwrap_or(current_bsp_count - 1);
+                    }
+
+                    let path = handler
+                        .scenario_data
+                        .scenario_tag
+                        .structure_bsps
+                        .items[current_bsp_index]
+                        .structure_bsp
+                        .path()
+                        .map(|t| t.to_string());
+
+                    let path = path.as_ref().map(|p| p.as_str());
+                    handler.lock_renderer().renderer.set_current_bsp(path).unwrap();
+
+                    println!("Changing BSP to #{current_bsp_index} ({})", path.unwrap_or("<no BSP loaded>"));
+
                     continue;
                 }
 
