@@ -9,7 +9,7 @@ use std::vec::Vec;
 use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, BufferImageCopy, CommandBufferUsage, CopyBufferToImageInfo};
 use vulkano::format::Format;
-use vulkano::image::{Image, ImageAspects, ImageCreateInfo, ImageSubresourceLayers, ImageType, ImageUsage};
+use vulkano::image::{Image, ImageAspects, ImageCreateFlags, ImageCreateInfo, ImageSubresourceLayers, ImageType, ImageUsage};
 use vulkano::memory::allocator::{AllocationCreateInfo, MemoryAllocatePreference, MemoryTypeFilter};
 use vulkano::DeviceSize;
 
@@ -110,6 +110,12 @@ impl VulkanBitmapData {
                 mip_levels: parameter.mipmap_count + 1,
                 array_layers: if parameter.bitmap_type == BitmapType::Cubemap { 6 } else { 1 },
                 usage: ImageUsage::TRANSFER_DST | ImageUsage::SAMPLED,
+                flags: if parameter.bitmap_type == BitmapType::Cubemap {
+                    ImageCreateFlags::CUBE_COMPATIBLE
+                }
+                else {
+                    ImageCreateFlags::empty()
+                },
                 ..Default::default()
             },
             AllocationCreateInfo {
