@@ -1,6 +1,6 @@
 use crate::error::MResult;
 use crate::renderer::vulkan::{default_allocation_create_info, VulkanMaterial, VulkanPipelineType};
-use crate::renderer::{AddShaderEnvironmentShaderData, DefaultType, Renderer, ShaderEnvironmentMapFunction};
+use crate::renderer::{AddShaderEnvironmentShaderData, DefaultType, Renderer, ShaderEnvironmentMapFunction, ShaderEnvironmentType};
 use std::sync::Arc;
 use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer};
@@ -20,6 +20,7 @@ pub struct VulkanShaderEnvironmentMaterial {
     alpha_tested: bool,
     detail_map_function: ShaderEnvironmentMapFunction,
     micro_detail_map_function: ShaderEnvironmentMapFunction,
+    shader_environment_type: ShaderEnvironmentType,
     primary_detail_map_scale: f32,
     secondary_detail_map_scale: f32,
     bump_map_scale: f32,
@@ -72,6 +73,7 @@ impl VulkanShaderEnvironmentMaterial {
             secondary_detail_map_scale: add_shader_parameter.secondary_detail_map_scale,
             bump_map_scale: add_shader_parameter.bump_map_scale,
             micro_detail_map_scale: add_shader_parameter.micro_detail_map_scale,
+            shader_environment_type: add_shader_parameter.shader_environment_type
         })
     }
 }
@@ -93,7 +95,7 @@ impl VulkanMaterial for VulkanShaderEnvironmentMaterial {
             bump_map_scale: self.bump_map_scale,
             micro_detail_map_scale: self.micro_detail_map_scale,
             flags: self.alpha_tested as u32,
-            shader_environment_type: 0,
+            shader_environment_type: self.shader_environment_type as u32,
             detail_map_function: self.detail_map_function as u32,
             micro_detail_map_function: self.micro_detail_map_function as u32,
         };

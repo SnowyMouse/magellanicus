@@ -35,7 +35,7 @@ vec4 blend_with_mix_type(vec4 color, vec4 with, uint blend_type, float alpha) {
             return vec4(0.0);
     }
 
-    return mix(color, vec4(blender.rgb, 1.0), alpha * with.a);
+    return mix(color, vec4(blender.rgb, 1.0), alpha);
 }
 
 void main() {
@@ -80,11 +80,17 @@ void main() {
         lightmap_texture_coordinates
     );
 
+    float primary_blending = primary_detail_map_color.a;
+    float secondary_blending = secondary_detail_map_color.a;
 
+    if(shader_environment_data.shader_environment_type == SHADER_ENVIRONMENT_TYPE_BLENDED || shader_environment_data.shader_environment_type == SHADER_ENVIRONMENT_TYPE_BLENDED_BASE_SPECULAR) {
+        primary_blending *= base_map_color.a;
+        secondary_blending *= 1.0 - primary_blending;
+    }
 
     vec4 scratch_color = base_map_color;
-    scratch_color = blend_with_mix_type(scratch_color, primary_detail_map_color, shader_environment_data.detail_map_function, base_map_color.a);
-    scratch_color = blend_with_mix_type(scratch_color, secondary_detail_map_color, shader_environment_data.detail_map_function, 1.0 - base_map_color.a);
+    scratch_color = blend_with_mix_type(scratch_color, primary_detail_map_color, shader_environment_data.detail_map_function, primary_blending);
+    scratch_color = blend_with_mix_type(scratch_color, secondary_detail_map_color, shader_environment_data.detail_map_function, secondary_blending);
     scratch_color = blend_with_mix_type(scratch_color, micro_detail_map_color, shader_environment_data.micro_detail_map_function, micro_detail_map_color.a);
     scratch_color = vec4(scratch_color.rgb * lightmap_color.rgb, 1.0);
     f_color = scratch_color;
