@@ -47,10 +47,17 @@ void main() {
     );
 
     // Alpha testing
-    if((shader_environment_data.flags & 1) == 1 && (min(base_map_color.a, bump_color.a) < 0.5)) {
-        discard;
-    }
+    if((shader_environment_data.flags & 1) == 1) {
+        // TODO: Is it just normal that discards 0-alpha pixels? The alpha is used for blending and specular on other
+        // types, so it makes no sense to test alpha on those types.
+        if(shader_environment_data.shader_environment_type == SHADER_ENVIRONMENT_TYPE_NORMAL && base_map_color.a == 0.0) {
+            discard;
+        }
 
+        if(bump_color.a <= 0.5) {
+            discard;
+        }
+    }
     bump_color.a = 1.0;
 
     vec4 primary_detail_map_color = texture(
@@ -72,6 +79,8 @@ void main() {
         sampler2D(lightmap_texture, lightmap_sampler),
         lightmap_texture_coordinates
     );
+
+
 
     vec4 scratch_color = base_map_color;
     scratch_color = blend_with_mix_type(scratch_color, primary_detail_map_color, shader_environment_data.detail_map_function, base_map_color.a);

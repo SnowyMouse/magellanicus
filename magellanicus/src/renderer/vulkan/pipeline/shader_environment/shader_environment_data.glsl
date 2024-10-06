@@ -9,3 +9,7 @@ layout(set = 2, binding = 0) uniform ShaderEnvironmentData {
     uint detail_map_function;
     uint micro_detail_map_function;
 } shader_environment_data;
+
+#define SHADER_ENVIRONMENT_TYPE_NORMAL 0
+#define SHADER_ENVIRONMENT_TYPE_BLENDED 1
+#define SHADER_ENVIRONMENT_TYPE_BLENDED_BASE_SPECULAR 2
