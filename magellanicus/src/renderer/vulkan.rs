@@ -11,9 +11,9 @@ mod vertex;
 mod material;
 
 use crate::error::{Error, MResult};
-use crate::renderer::data::BSP;
+use crate::renderer::data::{Sky, BSP};
 use crate::renderer::vulkan::helper::{build_swapchain, LoadedVulkan};
-use crate::renderer::vulkan::vertex::{VulkanModelData, VulkanModelVertex};
+use crate::renderer::vulkan::vertex::{VulkanFogData, VulkanModelData, VulkanModelVertex};
 use crate::renderer::{DefaultType, Renderer, RendererParameters, Resolution};
 pub use bitmap::*;
 pub use bsp::*;
@@ -217,11 +217,13 @@ impl VulkanRenderer {
                 extent: [i.rel_width * width, i.rel_height * height],
                 depth_range: 0.0..=1.0,
             };
+            let z_near = 0.05;
+            let z_far = 2250.0;
             let proj = Mat4::perspective_lh(
                 i.camera.fov,
                 viewport.extent[0] / viewport.extent[1],
-                0.05,
-                2250.0
+                z_near,
+                z_far
             );
             let view = Mat4::look_to_lh(
                 i.camera.position.into(),
@@ -236,20 +238,37 @@ impl VulkanRenderer {
             let cluster = cluster_index.map(|c| &currently_loaded_bsp.bsp_data.clusters[c]);
             let sky = cluster.and_then(|c| c.sky.as_ref()).and_then(|s| renderer.skies.get(s));
 
+            let mut fog_data;
+
             if let Some(sky) = sky {
                 // TODO: determine which fog color
-                draw_box(
-                    renderer,
-                    0.0,
-                    0.0,
-                    1.0,
-                    1.0,
-                    [sky.outdoor_fog_color[0], sky.outdoor_fog_color[1], sky.outdoor_fog_color[2], 1.0],
-                    &mut command_builder
-                ).unwrap();
-            };
+                fog_data = FogData {
+                    color: [sky.outdoor_fog_color[0], sky.outdoor_fog_color[1], sky.outdoor_fog_color[2], 0.0],
+                    distance_from: sky.outdoor_fog_start_distance,
+                    distance_to: sky.outdoor_fog_opaque_distance,
+                    min_opacity: 0.0,
+                    max_opacity: sky.outdoor_fog_maximum_density,
+                }
+            }
+            else {
+                fog_data = FogData::default()
+            }
 
-            upload_mvp_data(renderer, Vec3::default(), Mat3::IDENTITY, view, proj, &mut command_builder);
+            if !i.camera.fog {
+                fog_data = FogData::default();
+            }
+
+            draw_box(
+                renderer,
+                0.0,
+                0.0,
+                1.0,
+                1.0,
+                [fog_data.color[0], fog_data.color[1], fog_data.color[2], 1.0],
+                &mut command_builder
+            ).unwrap();
+
+            upload_fog_uniform(renderer, &fog_data, &mut command_builder);
 
             let geo_shader_iterator = currently_loaded_bsp
                 .geometries
@@ -261,18 +280,16 @@ impl VulkanRenderer {
             #[allow(unused_variables)]
             let non_opaque = geo_shader_iterator.clone().filter(|s| s.1.is_transparent());
 
+            upload_main_material_uniform(renderer, i.camera.position.into(), Vec3::default(), Mat3::IDENTITY, view, proj, &mut command_builder);
+
             // Draw non-transparent shaders first
-            let mut current_lightmap: Option<Option<usize>> = None;
             for (geometry, shader) in opaque {
                 let mut desired_lightmap = geometry.lightmap_index;
-                if i.camera.fullbright {
+                if !i.camera.lightmaps {
                     desired_lightmap = None;
                 }
 
-                if current_lightmap != Some(desired_lightmap) {
-                    current_lightmap = Some(desired_lightmap);
-                    upload_lightmap_data(renderer, desired_lightmap, &mut command_builder);
-                }
+                upload_lightmap_descriptor_set(renderer, desired_lightmap, &mut command_builder);
 
                 let index_buffer = geometry.vulkan.index_buffer.clone();
                 let index_count = index_buffer.len() as usize;
@@ -441,12 +458,12 @@ impl Error {
     }
 }
 
-fn upload_lightmap_data(
+fn upload_lightmap_descriptor_set(
     renderer: &Renderer,
     lightmap_index: Option<usize>,
     builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>
 ) {
-    let pipeline = renderer.renderer.pipelines[&VulkanPipelineType::SimpleTexture].get_pipeline();
+    let pipeline = renderer.renderer.pipelines[&VulkanPipelineType::ShaderEnvironment].get_pipeline();
     let sampler = renderer
         .current_bsp
         .as_ref()
@@ -461,7 +478,7 @@ fn upload_lightmap_data(
 
     let set = PersistentDescriptorSet::new(
         renderer.renderer.descriptor_set_allocator.as_ref(),
-        pipeline.layout().set_layouts()[2].clone(),
+        pipeline.layout().set_layouts()[1].clone(),
         [
             WriteDescriptorSet::sampler(0, sampler.1),
             WriteDescriptorSet::image_view(1, sampler.0),
@@ -477,17 +494,40 @@ fn upload_lightmap_data(
     ).unwrap();
 }
 
-fn upload_mvp_data(
+struct FogData {
+    color: [f32; 4],
+    distance_from: f32,
+    distance_to: f32,
+    min_opacity: f32,
+    max_opacity: f32
+}
+
+impl Default for FogData {
+    fn default() -> Self {
+        Self {
+            color: [0.0f32; 4],
+            distance_from: 0.0,
+            distance_to: 1.0,
+            min_opacity: 0.0,
+            max_opacity: 0.0
+        }
+    }
+}
+
+fn upload_main_material_uniform(
     renderer: &Renderer,
+    camera: Vec3,
     offset: Vec3,
     rotation: Mat3,
     view: Mat4,
     proj: Mat4,
     builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>
 ) {
-    let pipeline = renderer.renderer.pipelines[&VulkanPipelineType::SimpleTexture].get_pipeline();
+    let pipeline = renderer.renderer.pipelines[&VulkanPipelineType::ShaderEnvironment].get_pipeline();
     let model = Mat4::IDENTITY;
+
     let model_data = VulkanModelData {
+        camera: Padded::from(camera.to_array()),
         world: model.to_cols_array_2d(),
         view: view.to_cols_array_2d(),
         proj: proj.to_cols_array_2d(),
@@ -496,26 +536,68 @@ fn upload_mvp_data(
             Padded::from(rotation.x_axis.to_array()),
             Padded::from(rotation.y_axis.to_array()),
             Padded::from(rotation.z_axis.to_array())
-        ]
+        ],
     };
-    let uniform_buffer = Buffer::from_data(
+
+    let model_uniform_buffer = Buffer::from_data(
         renderer.renderer.memory_allocator.clone(),
         BufferCreateInfo { usage: BufferUsage::UNIFORM_BUFFER, ..Default::default() },
         default_allocation_create_info(),
         model_data
     ).unwrap();
+
     let set = PersistentDescriptorSet::new(
         renderer.renderer.descriptor_set_allocator.as_ref(),
         pipeline.layout().set_layouts()[0].clone(),
         [
-            WriteDescriptorSet::buffer(0, uniform_buffer),
+            WriteDescriptorSet::buffer(0, model_uniform_buffer),
         ],
         []
     ).unwrap();
+
     builder.bind_descriptor_sets(
         PipelineBindPoint::Graphics,
         pipeline.layout().clone(),
         0,
+        set
+    ).unwrap();
+}
+
+fn upload_fog_uniform(
+    renderer: &Renderer,
+    fog: &FogData,
+    builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>
+) {
+    let pipeline = renderer.renderer.pipelines[&VulkanPipelineType::ShaderEnvironment].get_pipeline();
+
+    let fog_data = VulkanFogData {
+        sky_fog_to: fog.distance_to,
+        sky_fog_from: fog.distance_from,
+        sky_fog_min_opacity: fog.min_opacity,
+        sky_fog_max_opacity: fog.max_opacity,
+        sky_fog_color: fog.color
+    };
+
+    let fog_uniform_buffer = Buffer::from_data(
+        renderer.renderer.memory_allocator.clone(),
+        BufferCreateInfo { usage: BufferUsage::UNIFORM_BUFFER, ..Default::default() },
+        default_allocation_create_info(),
+        fog_data
+    ).unwrap();
+
+    let set = PersistentDescriptorSet::new(
+        renderer.renderer.descriptor_set_allocator.as_ref(),
+        pipeline.layout().set_layouts()[2].clone(),
+        [
+            WriteDescriptorSet::buffer(0, fog_uniform_buffer),
+        ],
+        []
+    ).unwrap();
+
+    builder.bind_descriptor_sets(
+        PipelineBindPoint::Graphics,
+        pipeline.layout().clone(),
+        2,
         set
     ).unwrap();
 }

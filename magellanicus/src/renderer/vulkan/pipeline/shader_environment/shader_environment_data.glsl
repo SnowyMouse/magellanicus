@@ -1,4 +1,4 @@
-layout(set = 2, binding = 0) uniform ShaderEnvironmentData {
+layout(set = 3, binding = 0) uniform ShaderEnvironmentData {
     float primary_detail_map_scale;
     float secondary_detail_map_scale;
     float bump_map_scale;

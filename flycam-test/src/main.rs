@@ -232,7 +232,15 @@ fn main() -> Result<(), String> {
                 if keycode == Some(Keycode::Q) {
                     let mut renderer = handler.lock_renderer();
                     let mut camera = renderer.renderer.get_camera_for_viewport(viewport_mod);
-                    camera.fullbright = !camera.fullbright;
+                    camera.lightmaps = !camera.lightmaps;
+                    renderer.renderer.set_camera_for_viewport(viewport_mod, camera);
+                    continue;
+                }
+
+                if keycode == Some(Keycode::F) {
+                    let mut renderer = handler.lock_renderer();
+                    let mut camera = renderer.renderer.get_camera_for_viewport(viewport_mod);
+                    camera.fog = !camera.fog;
                     renderer.renderer.set_camera_for_viewport(viewport_mod, camera);
                     continue;
                 }

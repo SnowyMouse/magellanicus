@@ -41,8 +41,11 @@ pub struct Camera {
     /// Rotation of the camera
     pub rotation: [f32; 3],
 
-    /// Display the BSP in fullbright.
-    pub fullbright: bool
+    /// Enable lightmap.
+    pub lightmaps: bool,
+
+    /// Enable fog.
+    pub fog: bool
 }
 
 impl Default for Camera {
@@ -51,7 +54,8 @@ impl Default for Camera {
             fov: 56.0f32.to_radians(),
             position: Vec3::default().to_array(),
             rotation: [0.0, 1.0, 0.0],
-            fullbright: false
+            lightmaps: true,
+            fog: true
         }
     }
 }

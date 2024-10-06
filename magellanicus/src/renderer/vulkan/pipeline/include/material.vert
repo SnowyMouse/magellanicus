@@ -8,6 +8,7 @@ layout(location = 2) in vec2 lightmap_texture_coords;
 #endif
 
 layout(set = 0, binding = 0) uniform ModelData {
+    vec3 camera;
     mat4 world;
     mat4 view;
     mat4 proj;

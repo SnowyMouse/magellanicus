@@ -2,6 +2,7 @@
 
 #include "shader_environment_data.glsl"
 
+#define USE_FOG
 #define USE_LIGHTMAPS
 #include "../include/material.frag"
 #include "../include/blend.frag"
@@ -10,13 +11,14 @@ layout(location = 0) out vec4 f_color;
 
 layout(location = 0) in vec2 base_map_texture_coordinates;
 layout(location = 1) in vec2 lightmap_texture_coordinates;
+layout(location = 2) in float distance_from_camera;
 
-layout(set = 2, binding = 1) uniform sampler map_sampler;
-layout(set = 2, binding = 2) uniform texture2D base_map;
-layout(set = 2, binding = 3) uniform texture2D primary_detail_map;
-layout(set = 2, binding = 4) uniform texture2D secondary_detail_map;
-layout(set = 2, binding = 5) uniform texture2D micro_detail_map;
-layout(set = 2, binding = 6) uniform texture2D bump_map;
+layout(set = 3, binding = 1) uniform sampler map_sampler;
+layout(set = 3, binding = 2) uniform texture2D base_map;
+layout(set = 3, binding = 3) uniform texture2D primary_detail_map;
+layout(set = 3, binding = 4) uniform texture2D secondary_detail_map;
+layout(set = 3, binding = 5) uniform texture2D micro_detail_map;
+layout(set = 3, binding = 6) uniform texture2D bump_map;
 
 vec4 blend_with_mix_type(vec4 color, vec4 with, uint blend_type, float alpha) {
     vec4 blender;
@@ -39,6 +41,12 @@ vec4 blend_with_mix_type(vec4 color, vec4 with, uint blend_type, float alpha) {
 }
 
 void main() {
+    float clamped = clamp(distance_from_camera, sky_fog_data.sky_fog_from, sky_fog_data.sky_fog_to);
+    float fog_density = (clamped - sky_fog_data.sky_fog_from) / (sky_fog_data.sky_fog_to - sky_fog_data.sky_fog_from) * sky_fog_data.max_opacity;
+    if(fog_density == 1.0) {
+        discard;
+    }
+
     vec4 base_map_color = texture(sampler2D(base_map, map_sampler), base_map_texture_coordinates);
 
     vec4 bump_color = texture(
@@ -93,5 +101,7 @@ void main() {
     scratch_color = blend_with_mix_type(scratch_color, secondary_detail_map_color, shader_environment_data.detail_map_function, secondary_blending);
     scratch_color = blend_with_mix_type(scratch_color, micro_detail_map_color, shader_environment_data.micro_detail_map_function, micro_detail_map_color.a);
     scratch_color = vec4(scratch_color.rgb * lightmap_color.rgb, 1.0);
+
+    scratch_color.rgb = mix(scratch_color.rgb, sky_fog_data.sky_fog_color.rgb, fog_density);
     f_color = scratch_color;
 }

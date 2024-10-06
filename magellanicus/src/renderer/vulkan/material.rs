@@ -6,6 +6,7 @@ use crate::renderer::vulkan::material::simple_shader::VulkanSimpleShaderMaterial
 use crate::renderer::{AddShaderData, AddShaderParameter, Renderer};
 use std::sync::Arc;
 use vulkano::command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer};
+use vulkano::descriptor_set::PersistentDescriptorSet;
 use crate::renderer::vulkan::material::shader_environment::VulkanShaderEnvironmentMaterial;
 
 /// Material shader data
@@ -47,7 +48,12 @@ pub trait VulkanMaterial: Send + Sync + 'static {
     /// Generate rendering commands.
     ///
     /// All vertex buffers (vertices, texture coords, lightmap texture coords) must be bound!
-    fn generate_commands(&self, renderer: &Renderer, index_count: u32, to: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>) -> MResult<()>;
+    fn generate_commands(
+        &self,
+        renderer: &Renderer,
+        index_count: u32,
+        to: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>
+    ) -> MResult<()>;
 
     /// Return `true` if the material is transparent.
     ///

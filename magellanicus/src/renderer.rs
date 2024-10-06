@@ -285,7 +285,8 @@ impl Renderer {
             position: camera.position,
             rotation: Vec3::from(camera.rotation).try_normalize().unwrap_or(Vec3::new(0.0, 1.0, 0.0)).into(),
             fov: camera.fov,
-            fullbright: camera.fullbright
+            lightmaps: camera.lightmaps,
+            fog: camera.fog
         }
     }
 

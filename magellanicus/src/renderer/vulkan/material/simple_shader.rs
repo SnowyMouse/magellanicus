@@ -60,7 +60,7 @@ impl VulkanMaterial for VulkanSimpleShaderMaterial {
         let pipeline = renderer.renderer.pipelines[&VulkanPipelineType::SimpleTexture].get_pipeline();
         let set = PersistentDescriptorSet::new(
             renderer.renderer.descriptor_set_allocator.as_ref(),
-            pipeline.layout().set_layouts()[2].clone(),
+            pipeline.layout().set_layouts()[3].clone(),
             [
                 WriteDescriptorSet::sampler(0, self.diffuse_sampler.clone()),
                 WriteDescriptorSet::image_view(1, self.diffuse.clone()),
@@ -71,7 +71,7 @@ impl VulkanMaterial for VulkanSimpleShaderMaterial {
         to.bind_descriptor_sets(
             PipelineBindPoint::Graphics,
             pipeline.layout().clone(),
-            2,
+            3,
             set
         )?;
 

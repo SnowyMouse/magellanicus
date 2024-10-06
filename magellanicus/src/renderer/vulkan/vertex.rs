@@ -40,9 +40,21 @@ pub struct VulkanModelVertexLightmapTextureCoords {
 #[repr(C)]
 #[derive(BufferContents)]
 pub struct VulkanModelData {
+    pub camera: Padded<[f32; 3], 4>,
     pub world: [[f32; 4]; 4],
     pub view: [[f32; 4]; 4],
     pub proj: [[f32; 4]; 4],
     pub offset: Padded<[f32; 3], 4>,
     pub rotation: [Padded<[f32; 3], 4>; 3],
+}
+
+#[derive(Copy, Clone, Debug)]
+#[repr(C)]
+#[derive(BufferContents)]
+pub struct VulkanFogData {
+    pub sky_fog_color: [f32; 4],
+    pub sky_fog_from: f32,
+    pub sky_fog_to: f32,
+    pub sky_fog_min_opacity: f32,
+    pub sky_fog_max_opacity: f32,
 }

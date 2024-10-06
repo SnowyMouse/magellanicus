@@ -109,7 +109,7 @@ impl VulkanMaterial for VulkanShaderEnvironmentMaterial {
 
         let set = PersistentDescriptorSet::new(
             renderer.renderer.descriptor_set_allocator.as_ref(),
-            pipeline.layout().set_layouts()[2].clone(),
+            pipeline.layout().set_layouts()[3].clone(),
             [
                 WriteDescriptorSet::buffer(0, uniform_buffer),
                 WriteDescriptorSet::sampler(1, self.map_sampler.clone()),
@@ -125,7 +125,7 @@ impl VulkanMaterial for VulkanShaderEnvironmentMaterial {
         to.bind_descriptor_sets(
             PipelineBindPoint::Graphics,
             pipeline.layout().clone(),
-            2,
+            3,
             set
         )?;
 
