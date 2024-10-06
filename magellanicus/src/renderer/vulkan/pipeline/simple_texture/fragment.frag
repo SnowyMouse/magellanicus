@@ -14,16 +14,12 @@ layout(set = 3, binding = 0) uniform sampler s;
 layout(set = 3, binding = 1) uniform texture2D tex;
 
 void main() {
-    float clamped = clamp(distance_from_camera, sky_fog_data.sky_fog_from, sky_fog_data.sky_fog_to);
-    float fog_density = (clamped - sky_fog_data.sky_fog_from) / (sky_fog_data.sky_fog_to - sky_fog_data.sky_fog_from) * sky_fog_data.max_opacity;
-    if(fog_density == 1.0) {
-        discard;
-    }
-
     vec4 lightmap_color = texture(sampler2D(lightmap_texture, lightmap_sampler), lightmap_texcoords);
     vec4 color = texture(sampler2D(tex, s), tex_coords);
     vec4 lightmapped_color = vec4(color.rgb * lightmap_color.rgb, 1.0);
 
+    float clamped = clamp(distance_from_camera, sky_fog_data.sky_fog_from, sky_fog_data.sky_fog_to);
+    float fog_density = (clamped - sky_fog_data.sky_fog_from) / (sky_fog_data.sky_fog_to - sky_fog_data.sky_fog_from) * sky_fog_data.max_opacity;
     lightmapped_color.rgb = mix(lightmapped_color.rgb, sky_fog_data.sky_fog_color.rgb, fog_density);
 
     f_color = lightmapped_color;

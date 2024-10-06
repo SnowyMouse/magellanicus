@@ -6,7 +6,6 @@ use crate::renderer::vulkan::material::simple_shader::VulkanSimpleShaderMaterial
 use crate::renderer::{AddShaderData, AddShaderParameter, Renderer};
 use std::sync::Arc;
 use vulkano::command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer};
-use vulkano::descriptor_set::PersistentDescriptorSet;
 use crate::renderer::vulkan::material::shader_environment::VulkanShaderEnvironmentMaterial;
 
 /// Material shader data

@@ -5,12 +5,29 @@ use crate::vertex::ModelTriangle;
 use alloc::vec::Vec;
 use core::ops::Range;
 
-#[derive(Default)]
+pub const MIN_DRAW_DISTANCE_LIMIT: f32 = 100.0;
+pub const MAX_DRAW_DISTANCE_LIMIT: f32 = 2250.0;
+
 pub struct BSP {
     pub vulkan: VulkanBSPData,
     pub geometries: Vec<BSPGeometry>,
     pub bsp_data: BSPData,
     pub cluster_surfaces: Vec<Vec<usize>>,
+
+    /// Calculated based on the size of the BSP, clamped between [`MIN_DRAW_DISTANCE_LIMIT`] and [`MAX_DRAW_DISTANCE_LIMIT`].
+    pub draw_distance: f32
+}
+
+impl Default for BSP {
+    fn default() -> Self {
+        Self {
+            vulkan: Default::default(),
+            geometries: Default::default(),
+            bsp_data: Default::default(),
+            cluster_surfaces: Default::default(),
+            draw_distance: MIN_DRAW_DISTANCE_LIMIT
+        }
+    }
 }
 
 impl BSP {
@@ -46,7 +63,23 @@ impl BSP {
         let count = add_bsp_iterator.clone().count();
         let mut geometries = Vec::with_capacity(count);
 
+        let mut max_x = f32::NEG_INFINITY;
+        let mut max_y = f32::NEG_INFINITY;
+        let mut max_z = f32::NEG_INFINITY;
+        let mut min_x = f32::INFINITY;
+        let mut min_y = f32::INFINITY;
+        let mut min_z = f32::INFINITY;
+
         for data in add_bsp_iterator {
+            for p in &data.material_data.shader_vertices {
+                min_x = min_x.min(p.position[0]);
+                min_y = min_y.min(p.position[1]);
+                min_z = min_z.min(p.position[2]);
+                max_x = max_x.max(p.position[0]);
+                max_y = max_y.max(p.position[1]);
+                max_z = max_z.max(p.position[2]);
+            }
+
             geometries.push(BSPGeometry {
                 vulkan: VulkanBSPGeometryData::new(renderer, &add_bsp_parameter, data.material_data, data.lightmap_bitmap_index)?,
                 lightmap_index: data.material_data.lightmap_vertices.as_ref().and(data.lightmap_bitmap_index),
@@ -54,6 +87,16 @@ impl BSP {
                 lightmap_reflexive_index: data.lightmap_reflexive_index
             })
         }
+
+        let draw_distance = if max_x == f32::NEG_INFINITY {
+            0.0
+        }
+        else {
+            let x = max_x - min_x;
+            let y = max_y - min_y;
+            let z = max_z - min_z;
+            (x*x+y*y+z*z).sqrt() + 10.0 // add some leeway for if the camera goes slightly outside the BSP
+        }.clamp(MIN_DRAW_DISTANCE_LIMIT, MAX_DRAW_DISTANCE_LIMIT);
 
         let bsp_data = &mut add_bsp_parameter.bsp_data;
         let mut cluster_surfaces: Vec<Vec<usize>> = Vec::with_capacity(bsp_data.clusters.len());
@@ -116,7 +159,7 @@ impl BSP {
 
         let vulkan = VulkanBSPData::new(renderer, &add_bsp_parameter, &so_many_vectors)?;
 
-        Ok(Self { vulkan, geometries, bsp_data: add_bsp_parameter.bsp_data, cluster_surfaces })
+        Ok(Self { vulkan, geometries, bsp_data: add_bsp_parameter.bsp_data, cluster_surfaces, draw_distance })
     }
 }
 

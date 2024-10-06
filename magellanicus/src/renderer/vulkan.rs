@@ -11,7 +11,7 @@ mod vertex;
 mod material;
 
 use crate::error::{Error, MResult};
-use crate::renderer::data::{Sky, BSP};
+use crate::renderer::data::BSP;
 use crate::renderer::vulkan::helper::{build_swapchain, LoadedVulkan};
 use crate::renderer::vulkan::vertex::{VulkanFogData, VulkanModelData, VulkanModelVertex};
 use crate::renderer::{DefaultType, Renderer, RendererParameters, Resolution};
@@ -207,33 +207,7 @@ impl VulkanRenderer {
 
         let (width, height) = (renderer.renderer.current_resolution.width as f32, renderer.renderer.current_resolution.height as f32);
 
-        let mut allowed_bsp_surfaces_to_render: Vec<usize> = Vec::new();
-
         for i in &renderer.player_viewports {
-            allowed_bsp_surfaces_to_render.clear();
-
-            let viewport = Viewport {
-                offset: [i.rel_x * width, i.rel_y * height],
-                extent: [i.rel_width * width, i.rel_height * height],
-                depth_range: 0.0..=1.0,
-            };
-            let z_near = 0.05;
-            let z_far = 2250.0;
-            let proj = Mat4::perspective_lh(
-                i.camera.fov,
-                viewport.extent[0] / viewport.extent[1],
-                z_near,
-                z_far
-            );
-            let view = Mat4::look_to_lh(
-                i.camera.position.into(),
-                i.camera.rotation.into(),
-                Vec3::new(0.0, 0.0, -1.0)
-            );
-
-            command_builder.set_viewport(0, [viewport].into_iter().collect()).unwrap();
-            command_builder.set_cull_mode(CullMode::None).unwrap();
-
             let cluster_index = currently_loaded_bsp.bsp_data.find_cluster(i.camera.position);
             let cluster = cluster_index.map(|c| &currently_loaded_bsp.bsp_data.clusters[c]);
             let sky = cluster.and_then(|c| c.sky.as_ref()).and_then(|s| renderer.skies.get(s));
@@ -257,6 +231,36 @@ impl VulkanRenderer {
             if !i.camera.fog {
                 fog_data = FogData::default();
             }
+
+            let viewport = Viewport {
+                offset: [i.rel_x * width, i.rel_y * height],
+                extent: [i.rel_width * width, i.rel_height * height],
+                depth_range: 0.0..=1.0,
+            };
+
+            let z_near = 0.0625;
+            let mut z_far = currently_loaded_bsp.draw_distance;
+
+            // Occlude things that won't be visible anyway
+            if fog_data.max_opacity == 1.0 {
+                z_far = z_far.min(fog_data.distance_to);
+            }
+
+            z_far = z_far.max(z_near + 1.0);
+            let proj = Mat4::perspective_lh(
+                i.camera.fov,
+                viewport.extent[0] / viewport.extent[1],
+                z_near,
+                z_far
+            );
+            let view = Mat4::look_to_lh(
+                i.camera.position.into(),
+                i.camera.rotation.into(),
+                Vec3::new(0.0, 0.0, -1.0)
+            );
+
+            command_builder.set_viewport(0, [viewport].into_iter().collect()).unwrap();
+            command_builder.set_cull_mode(CullMode::None).unwrap();
 
             draw_box(
                 renderer,

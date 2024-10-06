@@ -41,12 +41,6 @@ vec4 blend_with_mix_type(vec4 color, vec4 with, uint blend_type, float alpha) {
 }
 
 void main() {
-    float clamped = clamp(distance_from_camera, sky_fog_data.sky_fog_from, sky_fog_data.sky_fog_to);
-    float fog_density = (clamped - sky_fog_data.sky_fog_from) / (sky_fog_data.sky_fog_to - sky_fog_data.sky_fog_from) * sky_fog_data.max_opacity;
-    if(fog_density == 1.0) {
-        discard;
-    }
-
     vec4 base_map_color = texture(sampler2D(base_map, map_sampler), base_map_texture_coordinates);
 
     vec4 bump_color = texture(
@@ -102,6 +96,9 @@ void main() {
     scratch_color = blend_with_mix_type(scratch_color, micro_detail_map_color, shader_environment_data.micro_detail_map_function, micro_detail_map_color.a);
     scratch_color = vec4(scratch_color.rgb * lightmap_color.rgb, 1.0);
 
+    float clamped = clamp(distance_from_camera, sky_fog_data.sky_fog_from, sky_fog_data.sky_fog_to);
+    float fog_density = (clamped - sky_fog_data.sky_fog_from) / (sky_fog_data.sky_fog_to - sky_fog_data.sky_fog_from) * sky_fog_data.max_opacity;
     scratch_color.rgb = mix(scratch_color.rgb, sky_fog_data.sky_fog_color.rgb, fog_density);
+
     f_color = scratch_color;
 }
