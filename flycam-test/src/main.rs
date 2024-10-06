@@ -189,6 +189,15 @@ fn main() -> Result<(), String> {
 
                 if keycode == Some(Keycode::Tab) {
                     viewport_mod = (viewport_mod + 1) % viewports;
+                    continue;
+                }
+
+                if keycode == Some(Keycode::Q) {
+                    let mut renderer = handler.lock_renderer();
+                    let mut camera = renderer.renderer.get_camera_for_viewport(viewport_mod);
+                    camera.fullbright = !camera.fullbright;
+                    renderer.renderer.set_camera_for_viewport(viewport_mod, camera);
+                    continue;
                 }
 
                 w |= keycode == Some(Keycode::W);
@@ -830,7 +839,7 @@ fn run_renderer_thread(renderer: Weak<Mutex<Renderer>>, pause_rendering: Arc<Ato
             let side = f32::from_bits(vel[1].load(Ordering::Relaxed)) * delta;
             let up = f32::from_bits(vel[2].load(Ordering::Relaxed)) * delta;
 
-            let mut camera = renderer.get_camera(v);
+            let mut camera = renderer.get_camera_for_viewport(v);
             let mut position = Vec3::from(camera.position);
             camera.rotation = rotate(camera.rotation, rot[0], rot[1]);
 

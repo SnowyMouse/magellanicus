@@ -39,7 +39,10 @@ pub struct Camera {
     pub position: [f32; 3],
 
     /// Rotation of the camera
-    pub rotation: [f32; 3]
+    pub rotation: [f32; 3],
+
+    /// Display the BSP in fullbright.
+    pub fullbright: bool
 }
 
 impl Default for Camera {
@@ -47,7 +50,8 @@ impl Default for Camera {
         Self {
             fov: 56.0f32.to_radians(),
             position: Vec3::default().to_array(),
-            rotation: [0.0, 1.0, 0.0]
+            rotation: [0.0, 1.0, 0.0],
+            fullbright: false
         }
     }
 }

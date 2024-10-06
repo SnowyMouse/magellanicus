@@ -264,9 +264,14 @@ impl VulkanRenderer {
             // Draw non-transparent shaders first
             let mut current_lightmap: Option<Option<usize>> = None;
             for (geometry, shader) in opaque {
-                if current_lightmap != Some(geometry.lightmap_index) {
-                    current_lightmap = Some(geometry.lightmap_index);
-                    upload_lightmap_data(renderer, geometry.lightmap_index, &mut command_builder);
+                let mut desired_lightmap = geometry.lightmap_index;
+                if i.camera.fullbright {
+                    desired_lightmap = None;
+                }
+
+                if current_lightmap != Some(desired_lightmap) {
+                    current_lightmap = Some(desired_lightmap);
+                    upload_lightmap_data(renderer, desired_lightmap, &mut command_builder);
                 }
 
                 let index_buffer = geometry.vulkan.index_buffer.clone();

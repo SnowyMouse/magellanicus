@@ -284,7 +284,8 @@ impl Renderer {
         viewport.camera = Camera {
             position: camera.position,
             rotation: Vec3::from(camera.rotation).try_normalize().unwrap_or(Vec3::new(0.0, 1.0, 0.0)).into(),
-            fov: camera.fov
+            fov: camera.fov,
+            fullbright: camera.fullbright
         }
     }
 
@@ -293,7 +294,7 @@ impl Renderer {
     /// # Panics
     ///
     /// Panics if `viewport >= self.viewport_count()`
-    pub fn get_camera(&self, viewport: usize) -> Camera {
+    pub fn get_camera_for_viewport(&self, viewport: usize) -> Camera {
         self.player_viewports[viewport].camera
     }
 
