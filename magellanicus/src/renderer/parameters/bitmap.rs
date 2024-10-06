@@ -1,5 +1,6 @@
 pub(crate) mod mipmap_iterator;
 
+use alloc::borrow::ToOwned;
 use alloc::vec::Vec;
 use alloc::format;
 use core::num::NonZeroUsize;
@@ -15,6 +16,13 @@ pub struct AddBitmapParameter {
 
 impl AddBitmapParameter {
     pub(crate) fn validate(&self) -> MResult<()> {
+        if self.sequences.is_empty() {
+            return Err(Error::from_data_error_string("Bitmap has no sequences!".to_owned()))
+        }
+        if self.bitmaps.is_empty() {
+            return Err(Error::from_data_error_string("Bitmap has no bitmaps!".to_owned()))
+        }
+
         let invalid_sequence_error = self.sequences
             .iter()
             .enumerate()
@@ -146,7 +154,9 @@ pub enum BitmapFormat {
     Y8,
     AY8,
     A8Y8,
-    P8
+    P8,
+
+    R32G32B32A32SFloat
 }
 impl BitmapFormat {
     pub fn block_pixel_length(self) -> usize {
@@ -165,6 +175,7 @@ impl BitmapFormat {
             Self::AY8 => 1,
             Self::A8Y8 => 1,
             Self::P8 => 1,
+            Self::R32G32B32A32SFloat => 1,
         }
     }
     pub fn block_byte_size(self) -> usize {
@@ -173,6 +184,7 @@ impl BitmapFormat {
             Self::DXT3 => 16,
             Self::DXT5 => 16,
             Self::BC7 => 16,
+            Self::R32G32B32A32SFloat => 4*4,
             Self::A8R8G8B8 => 4,
             Self::X8R8G8B8 => 4,
             Self::R5G6B5 => 2,

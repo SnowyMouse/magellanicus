@@ -38,6 +38,7 @@ impl VulkanBitmapData {
             BitmapFormat::R5G6B5 => (parameter.format, Format::R5G6B5_UNORM_PACK16, &parameter.data),
             BitmapFormat::A1R5G5B5 => (parameter.format, Format::A1R5G5B5_UNORM_PACK16, &parameter.data),
             BitmapFormat::A4R4G4B4 => (parameter.format, Format::A4R4G4B4_UNORM_PACK16, &parameter.data),
+            BitmapFormat::R32G32B32A32SFloat => (parameter.format, Format::R32G32B32A32_SFLOAT, &parameter.data),
 
             // TODO: VERIFY ALL OF THE MONOCHROME MEMES
 
@@ -187,8 +188,6 @@ impl VulkanBitmapData {
 
             offset += size as DeviceSize;
         }
-
-
 
         let buffer = command_buffer_builder.build()?;
         vulkan_renderer.execute_command_list(buffer);

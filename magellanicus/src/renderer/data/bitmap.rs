@@ -2,6 +2,7 @@ use alloc::vec::Vec;
 use alloc::string::String;
 use alloc::vec;
 use alloc::sync::Arc;
+use core::iter;
 use crate::error::MResult;
 use crate::renderer::{AddBitmapBitmapParameter, AddBitmapParameter, AddBitmapSequenceParameter, BitmapFormat, Renderer, Resolution};
 use crate::renderer::vulkan::VulkanBitmapData;
@@ -69,12 +70,25 @@ pub struct BitmapSprite {
 
 pub fn populate_default_bitmaps(renderer: &mut Renderer) -> MResult<()> {
     fn make_add_bitmap_parameter(renderer: &mut Renderer, path: &str, bitmap_type: BitmapType) -> MResult<Arc<String>> {
+        fn to_rgbaf32(v: [f32; 4]) -> [u8; 16] {
+            let r = v[0].to_le_bytes();
+            let g = v[1].to_le_bytes();
+            let b = v[2].to_le_bytes();
+            let a = v[3].to_le_bytes();
+            [
+                r[0],r[1],r[2],r[3],
+                g[0],g[1],g[2],g[3],
+                b[0],b[1],b[2],b[3],
+                a[0],a[1],a[2],a[3],
+            ]
+        }
+
         // note: black is fully transparent in source data, but all release builds are fully opaque
         // due to a bug with tool.exe
-        let black: [u8; 4] = [0x00, 0x00, 0x00, 0xFF];
-        let white: [u8; 4] = [0xFF, 0xFF, 0xFF, 0xFF];
-        let gray: [u8; 4] = [0x80, 0x80, 0x80, 0xFF];
-        let blue_gray: [u8; 4] = [0xFF, 0x80, 0x80, 0xFF];
+        let null: [u8; 16] = to_rgbaf32([0.0, 0.0, 0.0, 0.0]);
+        let white: [u8; 16] = to_rgbaf32([1.0, 1.0, 1.0, 1.0]);
+        let gray: [u8; 16] = to_rgbaf32([0.5, 0.5, 0.5, 1.0]);
+        let vector: [u8; 16] = to_rgbaf32([0.5, 0.5, 1.0, 1.0]);
 
         let black_data: Vec<u8>;
         let white_data: Vec<u8>;
@@ -82,55 +96,55 @@ pub fn populate_default_bitmaps(renderer: &mut Renderer) -> MResult<()> {
         let blue_gray_data: Vec<u8>;
 
         if bitmap_type == BitmapType::Cubemap {
-            black_data = core::iter::repeat(black)
+            black_data = iter::repeat(null)
                 .take(6)
                 .flatten()
                 .collect();
-            white_data = core::iter::repeat(white)
+            white_data = iter::repeat(white)
                 .take(6)
                 .flatten()
                 .collect();
-            gray_data = core::iter::repeat(gray)
+            gray_data = iter::repeat(gray)
                 .take(6)
                 .flatten()
                 .collect();
-            blue_gray_data = core::iter::repeat(blue_gray)
+            blue_gray_data = iter::repeat(vector)
                 .take(6)
                 .flatten()
                 .collect();
         }
         else {
-            black_data = black.to_vec();
+            black_data = null.to_vec();
             white_data = white.to_vec();
             gray_data = gray.to_vec();
-            blue_gray_data = blue_gray.to_vec();
+            blue_gray_data = vector.to_vec();
         }
 
         let add_data = AddBitmapParameter {
             bitmaps: vec![
                 AddBitmapBitmapParameter {
-                    format: BitmapFormat::X8R8G8B8,
+                    format: BitmapFormat::R32G32B32A32SFloat,
                     bitmap_type,
                     resolution: Resolution { width: 1, height: 1 },
                     mipmap_count: 0,
                     data: black_data,
                 },
                 AddBitmapBitmapParameter {
-                    format: BitmapFormat::X8R8G8B8,
+                    format: BitmapFormat::R32G32B32A32SFloat,
                     bitmap_type,
                     resolution: Resolution { width: 1, height: 1 },
                     mipmap_count: 0,
                     data: white_data,
                 },
                 AddBitmapBitmapParameter {
-                    format: BitmapFormat::X8R8G8B8,
+                    format: BitmapFormat::R32G32B32A32SFloat,
                     bitmap_type,
                     resolution: Resolution { width: 1, height: 1 },
                     mipmap_count: 0,
                     data: gray_data,
                 },
                 AddBitmapBitmapParameter {
-                    format: BitmapFormat::X8R8G8B8,
+                    format: BitmapFormat::R32G32B32A32SFloat,
                     bitmap_type,
                     resolution: Resolution { width: 1, height: 1 },
                     mipmap_count: 0,
