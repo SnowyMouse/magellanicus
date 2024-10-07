@@ -260,7 +260,6 @@ impl VulkanRenderer {
             );
 
             command_builder.set_viewport(0, [viewport].into_iter().collect()).unwrap();
-            command_builder.set_cull_mode(CullMode::None).unwrap();
 
             draw_box(
                 renderer,
@@ -285,6 +284,7 @@ impl VulkanRenderer {
             let non_opaque = geo_shader_iterator.clone().filter(|s| s.1.is_transparent());
 
             upload_main_material_uniform(renderer, i.camera.position.into(), Vec3::default(), Mat3::IDENTITY, view, proj, &mut command_builder);
+            command_builder.set_cull_mode(CullMode::Back).unwrap();
 
             // Draw non-transparent shaders first
             for (geometry, shader) in opaque {

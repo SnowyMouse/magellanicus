@@ -8,12 +8,13 @@ use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::image::sampler::Sampler;
 use vulkano::image::view::{ImageView, ImageViewCreateInfo};
 use vulkano::image::{ImageAspects, ImageSubresourceRange, ImageType};
-use vulkano::pipeline::graphics::rasterization::CullMode;
-use vulkano::pipeline::{Pipeline, PipelineBindPoint};
+use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
 
 pub struct VulkanSimpleShaderMaterial {
     diffuse: Arc<ImageView>,
-    diffuse_sampler: Arc<Sampler>
+    diffuse_sampler: Arc<Sampler>,
+    pipeline: Arc<GraphicsPipeline>,
+    descriptor_set: Arc<PersistentDescriptorSet>
 }
 
 impl VulkanSimpleShaderMaterial {
@@ -43,40 +44,38 @@ impl VulkanSimpleShaderMaterial {
         })?;
 
         let diffuse_sampler = renderer.renderer.default_2d_sampler.clone();
-        Ok(Self { diffuse, diffuse_sampler })
+        let pipeline = renderer.renderer.pipelines[&VulkanPipelineType::SimpleTexture].get_pipeline();
+
+        let descriptor_set = PersistentDescriptorSet::new(
+            renderer.renderer.descriptor_set_allocator.as_ref(),
+            pipeline.layout().set_layouts()[3].clone(),
+            [
+                WriteDescriptorSet::sampler(0, diffuse_sampler.clone()),
+                WriteDescriptorSet::image_view(1, diffuse.clone()),
+            ],
+            []
+        )?;
+
+        Ok(Self { diffuse, diffuse_sampler, pipeline, descriptor_set })
     }
 }
 
 impl VulkanMaterial for VulkanSimpleShaderMaterial {
     fn generate_commands(
         &self,
-        renderer: &Renderer,
+        _renderer: &Renderer,
         index_count: u32,
         to: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>
     ) -> MResult<()> {
-        to.bind_pipeline_graphics(renderer.renderer.pipelines[&VulkanPipelineType::SimpleTexture].get_pipeline())?;
-        to.set_cull_mode(CullMode::Back)?;
-
-        let pipeline = renderer.renderer.pipelines[&VulkanPipelineType::SimpleTexture].get_pipeline();
-        let set = PersistentDescriptorSet::new(
-            renderer.renderer.descriptor_set_allocator.as_ref(),
-            pipeline.layout().set_layouts()[3].clone(),
-            [
-                WriteDescriptorSet::sampler(0, self.diffuse_sampler.clone()),
-                WriteDescriptorSet::image_view(1, self.diffuse.clone()),
-            ],
-            []
-        )?;
-
+        let pipeline = self.pipeline.clone();
+        to.bind_pipeline_graphics(pipeline.clone())?;
         to.bind_descriptor_sets(
             PipelineBindPoint::Graphics,
             pipeline.layout().clone(),
             3,
-            set
+            self.descriptor_set.clone()
         )?;
-
         to.draw_indexed(index_count, 1, 0, 0, 0)?;
-
         Ok(())
     }
 }
