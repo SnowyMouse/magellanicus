@@ -198,16 +198,38 @@ impl Renderer {
     pub fn add_sky(&mut self, path: &str, sky: AddSkyParameter) -> MResult<()> {
         sky.validate(self)?;
 
+        // tool.exe defaults 0.0 max density to 1.0, so fog should be disabled if both the start and
+        // max distance are 0.0.
+
+        let mut outdoor_fog_maximum_density = sky.outdoor_fog_maximum_density;
+        let mut outdoor_fog_start_distance = sky.outdoor_fog_start_distance;
+        let mut outdoor_fog_opaque_distance = sky.outdoor_fog_opaque_distance;
+        let mut indoor_fog_maximum_density = sky.indoor_fog_maximum_density;
+        let mut indoor_fog_start_distance = sky.indoor_fog_start_distance;
+        let mut indoor_fog_opaque_distance = sky.indoor_fog_opaque_distance;
+
+        if sky.outdoor_fog_opaque_distance == 0.0 {
+            outdoor_fog_maximum_density = 0.0;
+            outdoor_fog_start_distance = 0.0;
+            outdoor_fog_opaque_distance = 1.0;
+        }
+
+        if sky.indoor_fog_opaque_distance == 0.0 {
+            indoor_fog_maximum_density = 0.0;
+            indoor_fog_start_distance = 0.0;
+            indoor_fog_opaque_distance = 1.0;
+        }
+
         self.skies.insert(Arc::new(path.to_owned()), Sky {
             geometry: sky.geometry.map(|s| self.geometries.get_key_value(&s).unwrap().0.clone()),
             outdoor_fog_color: sky.outdoor_fog_color,
-            outdoor_fog_maximum_density: sky.outdoor_fog_maximum_density,
-            outdoor_fog_start_distance: sky.outdoor_fog_start_distance,
-            outdoor_fog_opaque_distance: sky.outdoor_fog_opaque_distance,
+            outdoor_fog_maximum_density,
+            outdoor_fog_start_distance,
+            outdoor_fog_opaque_distance,
             indoor_fog_color: sky.indoor_fog_color,
-            indoor_fog_maximum_density: sky.indoor_fog_maximum_density,
-            indoor_fog_start_distance: sky.indoor_fog_start_distance,
-            indoor_fog_opaque_distance: sky.indoor_fog_opaque_distance,
+            indoor_fog_maximum_density,
+            indoor_fog_start_distance,
+            indoor_fog_opaque_distance,
         });
 
         Ok(())
