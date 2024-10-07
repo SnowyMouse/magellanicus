@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::vec;
 use vulkano::device::Device;
 use vulkano::format::Format;
+use vulkano::pipeline::graphics::color_blend::ColorBlendAttachmentState;
 use vulkano::pipeline::graphics::vertex_input::Vertex;
 use vulkano::pipeline::GraphicsPipeline;
 
@@ -32,7 +33,8 @@ impl ColorBox {
         let pipeline = load_pipeline(device, vertex::load, fragment::load, &PipelineSettings {
             depth_access: DepthAccess::NoDepth,
             vertex_buffer_descriptions: vec![VulkanModelVertex::per_vertex()],
-            alpha_blending: true
+            alpha_blending: true,
+            color_blend_attachment_state: ColorBlendAttachmentState::default()
         }, color_format)?;
 
         Ok(Self { pipeline })

@@ -2,6 +2,7 @@ use std::sync::Arc;
 use vulkano::device::Device;
 use std::vec;
 use vulkano::format::Format;
+use vulkano::pipeline::graphics::color_blend::{AttachmentBlend, ColorBlendAttachmentState};
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::pipeline::graphics::vertex_input::Vertex;
 use crate::error::MResult;
@@ -36,7 +37,11 @@ impl SimpleTextureShader {
                 VulkanModelVertexTextureCoords::per_vertex(),
                 VulkanModelVertexLightmapTextureCoords::per_vertex()
             ],
-            alpha_blending: false
+            alpha_blending: false,
+            color_blend_attachment_state: ColorBlendAttachmentState {
+                blend: Some(AttachmentBlend::additive()),
+                ..ColorBlendAttachmentState::default()
+            }
         }, color_format)?;
 
         Ok(Self { pipeline })

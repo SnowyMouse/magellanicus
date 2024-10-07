@@ -54,6 +54,9 @@ pub struct PipelineSettings {
     /// Vertex data expected to be bound and sent to the shader.
     pub vertex_buffer_descriptions: Vec<VertexBufferDescription>,
 
+    /// Determines how to blend
+    pub color_blend_attachment_state: ColorBlendAttachmentState,
+
     /// If true, enable alpha blending. Otherwise, the pixel color will be replaced.
     pub alpha_blending: bool
 }
@@ -96,7 +99,7 @@ pub fn load_pipeline(
 
     let mut blend = ColorBlendState::with_attachment_states(
         subpass.color_attachment_formats.len() as u32,
-        ColorBlendAttachmentState::default(),
+        settings.color_blend_attachment_state.clone(),
     );
 
     if settings.alpha_blending {

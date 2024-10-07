@@ -18,9 +18,10 @@ void main() {
     vec4 color = texture(sampler2D(tex, s), tex_coords);
     vec4 lightmapped_color = vec4(color.rgb * lightmap_color.rgb, 1.0);
 
+    // FIXME: Messes with additive transparent stuff
     float clamped = clamp(distance_from_camera, sky_fog_data.sky_fog_from, sky_fog_data.sky_fog_to);
     float fog_density = (clamped - sky_fog_data.sky_fog_from) / (sky_fog_data.sky_fog_to - sky_fog_data.sky_fog_from) * sky_fog_data.max_opacity;
-    lightmapped_color.rgb = mix(lightmapped_color.rgb, sky_fog_data.sky_fog_color.rgb, fog_density);
+    lightmapped_color.rgb = mix(lightmapped_color.rgb, sky_fog_data.sky_fog_color.rgb, fog_density * 0.0);
 
     f_color = lightmapped_color;
 }
