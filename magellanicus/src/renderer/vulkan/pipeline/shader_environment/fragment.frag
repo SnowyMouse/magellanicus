@@ -97,8 +97,8 @@ void main() {
     scratch_color = vec4(scratch_color.rgb * lightmap_color.rgb, 1.0);
 
     float clamped = clamp(distance_from_camera, sky_fog_data.sky_fog_from, sky_fog_data.sky_fog_to);
-    float fog_density = (clamped - sky_fog_data.sky_fog_from) / (sky_fog_data.sky_fog_to - sky_fog_data.sky_fog_from) * sky_fog_data.max_opacity;
-    scratch_color.rgb = mix(scratch_color.rgb, sky_fog_data.sky_fog_color.rgb, fog_density);
+    float fog_density = (clamped - sky_fog_data.sky_fog_from) / (sky_fog_data.sky_fog_to - sky_fog_data.sky_fog_from);
+    scratch_color.rgb = mix(scratch_color.rgb, sky_fog_data.sky_fog_color.rgb, sqrt(fog_density) * sky_fog_data.max_opacity);
 
     f_color = scratch_color;
 }
