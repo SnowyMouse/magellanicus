@@ -419,6 +419,8 @@ impl VulkanRenderer {
             .take()
             .expect("no future?")
             .join(execution)
+            .then_signal_fence_and_flush()
+            .expect("failed to signal/flush")
             .boxed_send_sync();
 
         self.future = Some(future)
