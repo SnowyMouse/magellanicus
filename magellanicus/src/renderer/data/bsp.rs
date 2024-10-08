@@ -13,6 +13,7 @@ pub struct BSP {
     pub geometries: Vec<BSPGeometry>,
     pub bsp_data: BSPData,
     pub cluster_surfaces: Vec<Vec<usize>>,
+    pub geometry_indices_sorted_by_material: Vec<usize>,
 
     /// Calculated based on the size of the BSP, clamped between [`MIN_DRAW_DISTANCE_LIMIT`] and [`MAX_DRAW_DISTANCE_LIMIT`].
     pub draw_distance: f32
@@ -25,7 +26,8 @@ impl Default for BSP {
             geometries: Default::default(),
             bsp_data: Default::default(),
             cluster_surfaces: Default::default(),
-            draw_distance: MIN_DRAW_DISTANCE_LIMIT
+            draw_distance: MIN_DRAW_DISTANCE_LIMIT,
+            geometry_indices_sorted_by_material: Default::default()
         }
     }
 }
@@ -87,6 +89,11 @@ impl BSP {
                 lightmap_reflexive_index: data.lightmap_reflexive_index
             })
         }
+
+        let mut geometry_indices_sorted_by_material = Vec::from_iter(0usize..geometries.len());
+        geometry_indices_sorted_by_material.sort_by(|a, b| {
+            geometries[*a].vulkan.shader.cmp(&geometries[*b].vulkan.shader)
+        });
 
         let draw_distance = if max_x == f32::NEG_INFINITY {
             0.0
@@ -159,7 +166,7 @@ impl BSP {
 
         let vulkan = VulkanBSPData::new(renderer, &add_bsp_parameter, &so_many_vectors)?;
 
-        Ok(Self { vulkan, geometries, bsp_data: add_bsp_parameter.bsp_data, cluster_surfaces, draw_distance })
+        Ok(Self { vulkan, geometries, bsp_data: add_bsp_parameter.bsp_data, cluster_surfaces, draw_distance, geometry_indices_sorted_by_material })
     }
 }
 

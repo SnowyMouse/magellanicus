@@ -92,7 +92,7 @@ fn main() -> Result<(), String> {
         let (engine, dependencies) = load_tags_from_dir(&tags, &scenario_path, engine)?;
         (scenario_path, engine, dependencies)
     };
-    let window_title = format!("Magellanicus - {scenario_path}");
+    let window_title = format!("Magellanicus Flycam Test {scenario_path}");
 
     let scenario_tag = dependencies
         .get(&scenario_path)

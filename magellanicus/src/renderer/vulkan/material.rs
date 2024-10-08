@@ -46,11 +46,13 @@ impl VulkanMaterialShaderData {
 pub trait VulkanMaterial: Send + Sync + 'static {
     /// Generate rendering commands.
     ///
-    /// All vertex buffers (vertices, texture coords, lightmap texture coords) must be bound!
+    /// All vertex buffers (vertices, texture coords, lightmap texture coords) will be bound before
+    /// this is called.
     fn generate_commands(
         &self,
         renderer: &Renderer,
         index_count: u32,
+        repeat_shader: bool,
         to: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>
     ) -> MResult<()>;
 

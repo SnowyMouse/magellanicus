@@ -274,8 +274,9 @@ impl VulkanRenderer {
             upload_fog_uniform(renderer, &fog_data, &mut command_builder);
 
             let geo_shader_iterator = currently_loaded_bsp
-                .geometries
+                .geometry_indices_sorted_by_material
                 .iter()
+                .map(|g| &currently_loaded_bsp.geometries[*g])
                 .map(|g| (g, &renderer.shaders.get(&g.vulkan.shader).expect("no shader?").vulkan.pipeline_data));
 
             let opaque = geo_shader_iterator.clone().filter(|s| !s.1.is_transparent());
@@ -287,7 +288,17 @@ impl VulkanRenderer {
             command_builder.set_cull_mode(CullMode::Back).unwrap();
 
             // Draw non-transparent shaders first
+            let mut last_shader = None;
             for (geometry, shader) in opaque {
+                let this_shader = &geometry.vulkan.shader;
+                let repeat_shader = if last_shader != Some(this_shader) {
+                    last_shader = Some(this_shader);
+                    false
+                }
+                else {
+                    true
+                };
+
                 let mut desired_lightmap = geometry.lightmap_index;
                 if !i.camera.lightmaps {
                     desired_lightmap = None;
@@ -311,7 +322,7 @@ impl VulkanRenderer {
                 )).unwrap();
 
                 shader
-                    .generate_commands(renderer, index_count as u32, &mut command_builder)
+                    .generate_commands(renderer, index_count as u32, repeat_shader, &mut command_builder)
                     .expect("can't generate stage commands");
             }
         }

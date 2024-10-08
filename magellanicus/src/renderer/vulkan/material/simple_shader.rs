@@ -65,16 +65,19 @@ impl VulkanMaterial for VulkanSimpleShaderMaterial {
         &self,
         _renderer: &Renderer,
         index_count: u32,
+        repeat_shader: bool,
         to: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>
     ) -> MResult<()> {
-        let pipeline = self.pipeline.clone();
-        to.bind_pipeline_graphics(pipeline.clone())?;
-        to.bind_descriptor_sets(
-            PipelineBindPoint::Graphics,
-            pipeline.layout().clone(),
-            3,
-            self.descriptor_set.clone()
-        )?;
+        if !repeat_shader {
+            let pipeline = self.pipeline.clone();
+            to.bind_pipeline_graphics(pipeline.clone())?;
+            to.bind_descriptor_sets(
+                PipelineBindPoint::Graphics,
+                pipeline.layout().clone(),
+                3,
+                self.descriptor_set.clone()
+            )?;
+        }
         to.draw_indexed(index_count, 1, 0, 0, 0)?;
         Ok(())
     }

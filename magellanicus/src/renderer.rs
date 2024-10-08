@@ -208,13 +208,13 @@ impl Renderer {
         let mut indoor_fog_start_distance = sky.indoor_fog_start_distance;
         let mut indoor_fog_opaque_distance = sky.indoor_fog_opaque_distance;
 
-        if sky.outdoor_fog_opaque_distance == 0.0 {
+        if outdoor_fog_opaque_distance == 0.0 {
             outdoor_fog_maximum_density = 0.0;
             outdoor_fog_start_distance = 0.0;
             outdoor_fog_opaque_distance = 1.0;
         }
 
-        if sky.indoor_fog_opaque_distance == 0.0 {
+        if indoor_fog_opaque_distance == 0.0 {
             indoor_fog_maximum_density = 0.0;
             indoor_fog_start_distance = 0.0;
             indoor_fog_opaque_distance = 1.0;
