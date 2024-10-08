@@ -20,24 +20,17 @@ layout(set = 3, binding = 4) uniform texture2D secondary_detail_map;
 layout(set = 3, binding = 5) uniform texture2D micro_detail_map;
 layout(set = 3, binding = 6) uniform texture2D bump_map;
 
-vec4 blend_with_mix_type(vec4 color, vec4 with, uint blend_type, float alpha) {
-    vec4 blender;
-
+vec3 blend_with_mix_type(vec3 color, vec3 with, uint blend_type) {
     switch(blend_type) {
         case 0:
-            blender = double_biased_multiply(color, with);
-            break;
+            return double_biased_multiply(color, with);
         case 1:
-            blender = multiply(color, with);
-            break;
+            return multiply(color, with);
         case 2:
-            blender = double_biased_add(color, with);
-            break;
+            return double_biased_add(color, with);
         default:
-            return vec4(0.0);
+            return vec3(0.0);
     }
-
-    return mix(color, vec4(blender.rgb, 1.0), alpha);
 }
 
 void main() {
@@ -85,20 +78,28 @@ void main() {
     float primary_blending = primary_detail_map_color.a;
     float secondary_blending = secondary_detail_map_color.a;
 
-    if(shader_environment_data.shader_environment_type == SHADER_ENVIRONMENT_TYPE_BLENDED || shader_environment_data.shader_environment_type == SHADER_ENVIRONMENT_TYPE_BLENDED_BASE_SPECULAR) {
-        primary_blending *= base_map_color.a;
-        secondary_blending *= 1.0 - primary_blending;
+    vec3 scratch_color;
+
+    switch(shader_environment_data.shader_environment_type) {
+        case SHADER_ENVIRONMENT_TYPE_BLENDED:
+        case SHADER_ENVIRONMENT_TYPE_BLENDED_BASE_SPECULAR:
+            scratch_color = mix(secondary_detail_map_color.rgb, primary_detail_map_color.rgb, base_map_color.a);
+            break;
+        case SHADER_ENVIRONMENT_TYPE_NORMAL:
+            scratch_color = mix(secondary_detail_map_color.rgb, primary_detail_map_color.rgb, secondary_detail_map_color.a);
+            break;
+        default:
+            f_color = vec4(1.0);
+            return;
     }
 
-    vec4 scratch_color = base_map_color;
-    scratch_color = blend_with_mix_type(scratch_color, primary_detail_map_color, shader_environment_data.detail_map_function, primary_blending);
-    scratch_color = blend_with_mix_type(scratch_color, secondary_detail_map_color, shader_environment_data.detail_map_function, secondary_blending);
-    scratch_color = blend_with_mix_type(scratch_color, micro_detail_map_color, shader_environment_data.micro_detail_map_function, micro_detail_map_color.a);
-    scratch_color = vec4(scratch_color.rgb * lightmap_color.rgb, 1.0);
+    scratch_color = blend_with_mix_type(base_map_color.rgb, scratch_color, shader_environment_data.detail_map_function);
+    scratch_color = blend_with_mix_type(micro_detail_map_color.rgb, scratch_color, shader_environment_data.micro_detail_map_function);
+    scratch_color = scratch_color.rgb * lightmap_color.rgb;
 
     float clamped = clamp(distance_from_camera, sky_fog_data.sky_fog_from, sky_fog_data.sky_fog_to);
     float fog_density = (clamped - sky_fog_data.sky_fog_from) / (sky_fog_data.sky_fog_to - sky_fog_data.sky_fog_from) * sky_fog_data.max_opacity;
-    scratch_color.rgb = mix(scratch_color.rgb, sky_fog_data.sky_fog_color.rgb, fog_density);
+    scratch_color = mix(scratch_color.rgb, sky_fog_data.sky_fog_color.rgb, fog_density);
 
-    f_color = scratch_color;
+    f_color = vec4(scratch_color, 1.0);
 }

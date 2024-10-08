@@ -37,19 +37,19 @@ impl VulkanShaderEnvironmentMaterial {
             .clone();
 
         let primary_detail_map = renderer
-            .get_or_default_2d(&add_shader_parameter.primary_detail_map, 0, DefaultType::Null)
+            .get_or_default_2d(&add_shader_parameter.primary_detail_map, 0, DefaultType::Gray)
             .vulkan
             .image
             .clone();
 
         let secondary_detail_map = renderer
-            .get_or_default_2d(&add_shader_parameter.secondary_detail_map, 0, DefaultType::Null)
+            .get_or_default_2d(&add_shader_parameter.secondary_detail_map, 0, DefaultType::Gray)
             .vulkan
             .image
             .clone();
 
         let micro_detail_map = renderer
-            .get_or_default_2d(&add_shader_parameter.micro_detail_map, 0, DefaultType::Null)
+            .get_or_default_2d(&add_shader_parameter.micro_detail_map, 0, DefaultType::Gray)
             .vulkan
             .image
             .clone();
