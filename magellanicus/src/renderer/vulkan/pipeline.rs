@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use vulkano::device::Device;
-use vulkano::format::Format;
 use vulkano::pipeline::GraphicsPipeline;
 use crate::error::MResult;
 
@@ -15,13 +14,13 @@ pub trait VulkanPipelineData: Send + Sync + 'static {
     fn get_pipeline(&self) -> Arc<GraphicsPipeline>;
 }
 
-pub fn load_all_pipelines(device: Arc<Device>, color_format: Format) -> MResult<BTreeMap<VulkanPipelineType, Arc<dyn VulkanPipelineData>>> {
+pub fn load_all_pipelines(device: Arc<Device>) -> MResult<BTreeMap<VulkanPipelineType, Arc<dyn VulkanPipelineData>>> {
     let mut pipelines: BTreeMap<VulkanPipelineType, Arc<dyn VulkanPipelineData>> = BTreeMap::new();
 
-    pipelines.insert(VulkanPipelineType::SolidColor, Arc::new(solid_color::SolidColorShader::new(device.clone(), color_format)?));
-    pipelines.insert(VulkanPipelineType::SimpleTexture, Arc::new(simple_texture::SimpleTextureShader::new(device.clone(), color_format)?));
-    pipelines.insert(VulkanPipelineType::ColorBox, Arc::new(color_box::ColorBox::new(device.clone(), color_format)?));
-    pipelines.insert(VulkanPipelineType::ShaderEnvironment, Arc::new(shader_environment::ShaderEnvironment::new(device.clone(), color_format)?));
+    pipelines.insert(VulkanPipelineType::SolidColor, Arc::new(solid_color::SolidColorShader::new(device.clone())?));
+    pipelines.insert(VulkanPipelineType::SimpleTexture, Arc::new(simple_texture::SimpleTextureShader::new(device.clone())?));
+    pipelines.insert(VulkanPipelineType::ColorBox, Arc::new(color_box::ColorBox::new(device.clone())?));
+    pipelines.insert(VulkanPipelineType::ShaderEnvironment, Arc::new(shader_environment::ShaderEnvironment::new(device.clone())?));
 
     Ok(pipelines)
 }

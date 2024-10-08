@@ -1,14 +1,13 @@
 use std::sync::Arc;
 use vulkano::device::Device;
 use std::vec;
-use vulkano::format::Format;
 use vulkano::pipeline::graphics::color_blend::{AttachmentBlend, ColorBlendAttachmentState};
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::pipeline::graphics::vertex_input::Vertex;
 use crate::error::MResult;
 use crate::renderer::vulkan::pipeline::pipeline_loader::{load_pipeline, DepthAccess, PipelineSettings};
 use crate::renderer::vulkan::vertex::{VulkanModelVertex, VulkanModelVertexLightmapTextureCoords, VulkanModelVertexTextureCoords};
-use crate::renderer::vulkan::VulkanPipelineData;
+use crate::renderer::vulkan::{VulkanPipelineData, OFFLINE_PIPELINE_COLOR_FORMAT};
 
 mod vertex {
     vulkano_shaders::shader! {
@@ -29,7 +28,7 @@ pub struct SimpleTextureShader {
 }
 
 impl SimpleTextureShader {
-    pub fn new(device: Arc<Device>, color_format: Format) -> MResult<Self> {
+    pub fn new(device: Arc<Device>) -> MResult<Self> {
         let pipeline = load_pipeline(device, vertex::load, fragment::load, &PipelineSettings {
             depth_access: DepthAccess::DepthWrite,
             vertex_buffer_descriptions: vec![
@@ -42,7 +41,7 @@ impl SimpleTextureShader {
                 blend: Some(AttachmentBlend::additive()),
                 ..ColorBlendAttachmentState::default()
             }
-        }, color_format)?;
+        }, OFFLINE_PIPELINE_COLOR_FORMAT)?;
 
         Ok(Self { pipeline })
     }

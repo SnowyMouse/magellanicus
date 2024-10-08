@@ -31,7 +31,7 @@ use std::vec::Vec;
 use std::{eprintln, format, vec};
 use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage};
 use vulkano::command_buffer::allocator::{StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo};
-use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferInheritanceInfo, CommandBufferInheritanceRenderPassType, CommandBufferInheritanceRenderingInfo, CommandBufferUsage, PrimaryAutoCommandBuffer, PrimaryCommandBufferAbstract, RenderingAttachmentInfo, RenderingInfo, SecondaryAutoCommandBuffer};
+use vulkano::command_buffer::{AutoCommandBufferBuilder, BlitImageInfo, CommandBufferInheritanceInfo, CommandBufferInheritanceRenderPassType, CommandBufferInheritanceRenderingInfo, CommandBufferUsage, PrimaryAutoCommandBuffer, PrimaryCommandBufferAbstract, RenderingAttachmentInfo, RenderingInfo, SecondaryAutoCommandBuffer};
 use vulkano::descriptor_set::allocator::{StandardDescriptorSetAllocator, StandardDescriptorSetAllocatorCreateInfo};
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::device::{Device, Queue};
@@ -50,6 +50,8 @@ use vulkano::swapchain::{acquire_next_image, Surface, Swapchain, SwapchainAcquir
 use vulkano::sync::GpuFuture;
 use vulkano::{Validated, ValidationError, VulkanError};
 
+pub(crate) static OFFLINE_PIPELINE_COLOR_FORMAT: Format = Format::R8G8B8A8_UNORM;
+
 pub struct VulkanRenderer {
     current_resolution: Resolution,
     instance: Arc<Instance>,
@@ -60,7 +62,6 @@ pub struct VulkanRenderer {
     queue: Arc<Queue>,
     future: Option<Box<dyn GpuFuture + Send + Sync>>,
     pipelines: BTreeMap<VulkanPipelineType, Arc<dyn VulkanPipelineData>>,
-    output_format: Format,
     swapchain: Arc<Swapchain>,
     surface: Arc<Surface>,
     swapchain_images: Vec<Arc<Image>>,
@@ -97,13 +98,12 @@ impl VulkanRenderer {
 
         let output_format = device
             .physical_device()
-            .surface_formats(surface.as_ref(), Default::default())
-            .unwrap()[0]
+            .surface_formats(surface.as_ref(), Default::default())?[0]
             .0;
 
         let (swapchain, swapchain_images) = build_swapchain(device.clone(), surface.clone(), output_format, renderer_parameters)?;
 
-        let pipelines = load_all_pipelines(device.clone(), output_format)?;
+        let pipelines = load_all_pipelines(device.clone())?;
 
         let swapchain_image_views = swapchain_images.iter().map(|v| {
             ImageView::new_default(v.clone()).unwrap()
@@ -120,7 +120,6 @@ impl VulkanRenderer {
             queue,
             future,
             pipelines,
-            output_format,
             swapchain,
             surface,
             swapchain_image_views,
@@ -173,12 +172,24 @@ impl VulkanRenderer {
             CommandBufferUsage::OneTimeSubmit
         ).expect("failed to init command builder");
 
-        let color_view = renderer.renderer.swapchain_image_views[image_index as usize].clone();
+        let final_color_view = renderer.renderer.swapchain_image_views[image_index as usize].clone();
+
+        let color_view = ImageView::new_default(Image::new(
+            renderer.renderer.memory_allocator.clone(),
+            ImageCreateInfo {
+                extent: final_color_view.image().extent(),
+                format: OFFLINE_PIPELINE_COLOR_FORMAT,
+                image_type: ImageType::Dim2d,
+                usage: ImageUsage::TRANSFER_SRC | ImageUsage::COLOR_ATTACHMENT,
+                ..Default::default()
+            },
+            AllocationCreateInfo::default()
+        ).unwrap()).unwrap();
 
         let depth_image = Image::new(
             renderer.renderer.memory_allocator.clone(),
             ImageCreateInfo {
-                extent: color_view.image().extent(),
+                extent: final_color_view.image().extent(),
                 format: Format::D32_SFLOAT,
                 image_type: ImageType::Dim2d,
                 usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT,
@@ -194,7 +205,7 @@ impl VulkanRenderer {
                 load_op: AttachmentLoadOp::Clear,
                 store_op: AttachmentStoreOp::Store,
                 clear_value: Some([0.0, 0.0, 0.0, 1.0].into()),
-                ..RenderingAttachmentInfo::image_view(color_view)
+                ..RenderingAttachmentInfo::image_view(color_view.clone())
             })],
             depth_attachment: Some(RenderingAttachmentInfo {
                 load_op: AttachmentLoadOp::Clear,
@@ -330,6 +341,7 @@ impl VulkanRenderer {
         Self::draw_split_screen_bars(renderer, &mut command_builder, width, height);
 
         command_builder.end_rendering().expect("failed to end rendering");
+        command_builder.blit_image(BlitImageInfo::images(color_view.image().clone(), final_color_view.image().clone())).unwrap();
 
         let commands = command_builder.build().expect("failed to build command builder");
 
@@ -419,7 +431,7 @@ impl VulkanRenderer {
             CommandBufferUsage::MultipleSubmit,
             CommandBufferInheritanceInfo {
                 render_pass: Some(CommandBufferInheritanceRenderPassType::BeginRendering(CommandBufferInheritanceRenderingInfo {
-                    color_attachment_formats: vec![Some(self.output_format)],
+                    color_attachment_formats: vec![Some(OFFLINE_PIPELINE_COLOR_FORMAT)],
                     depth_attachment_format: Some(Format::D32_SFLOAT),
                     ..CommandBufferInheritanceRenderingInfo::default()
                 })),

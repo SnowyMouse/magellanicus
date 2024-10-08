@@ -98,7 +98,7 @@ pub fn build_swapchain(device: Arc<Device>, surface: Arc<Surface>, image_format:
             min_image_count: surface_capabilities.min_image_count.max(2),
             image_format,
             image_extent: [renderer_parameters.resolution.width, renderer_parameters.resolution.height],
-            image_usage: ImageUsage::COLOR_ATTACHMENT,
+            image_usage: ImageUsage::COLOR_ATTACHMENT | ImageUsage::TRANSFER_DST,
             present_mode: if renderer_parameters.vsync {
                 // This is guaranteed to be supported as per the Vulkan standard.
                 PresentMode::Fifo
