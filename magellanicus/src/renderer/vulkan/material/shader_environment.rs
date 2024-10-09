@@ -6,7 +6,7 @@ use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer};
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::image::sampler::Sampler;
-use vulkano::image::view::ImageView;
+use vulkano::image::view::{ImageView, ImageViewCreateInfo, ImageViewType};
 use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
 
 pub struct VulkanShaderEnvironmentMaterial {
@@ -60,6 +60,12 @@ impl VulkanShaderEnvironmentMaterial {
             .image
             .clone();
 
+        let cubemap = renderer
+            .get_or_default_cubemap(&add_shader_parameter.reflection_cube_map, 0, DefaultType::Null)
+            .vulkan
+            .image
+            .clone();
+
         let pipeline = renderer
             .renderer
             .pipelines[&VulkanPipelineType::ShaderEnvironment]
@@ -82,6 +88,13 @@ impl VulkanShaderEnvironmentMaterial {
         let secondary_detail_map = ImageView::new_default(secondary_detail_map)?;
         let micro_detail_map = ImageView::new_default(micro_detail_map)?;
         let bump_map = ImageView::new_default(bump_map)?;
+        let cubemap = ImageView::new(
+            cubemap.clone(),
+            ImageViewCreateInfo {
+                view_type: ImageViewType::Cube,
+                ..ImageViewCreateInfo::from_image(&cubemap)
+            }
+        )?;
 
         let uniform_buffer = Buffer::from_data(
             renderer.renderer.memory_allocator.clone(),

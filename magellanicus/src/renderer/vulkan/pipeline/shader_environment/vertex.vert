@@ -7,6 +7,8 @@
 
 #include "../include/material.vert"
 
+layout(location = 4) in vec3 normal;
+
 layout(location = 0) out vec2 base_map_texture_coordinates;
 layout(location = 1) out vec2 lightmap_texture_coordinates;
 layout(location = 2) out float distance_from_camera;

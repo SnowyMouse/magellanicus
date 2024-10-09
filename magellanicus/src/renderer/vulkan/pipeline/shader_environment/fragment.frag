@@ -95,8 +95,16 @@ void main() {
 
     scratch_color = blend_with_mix_type(base_map_color.rgb, scratch_color, shader_environment_data.detail_map_function);
     scratch_color = blend_with_mix_type(micro_detail_map_color.rgb, scratch_color, shader_environment_data.micro_detail_map_function);
-    scratch_color = scratch_color.rgb * lightmap_color.rgb;
 
+    vec3 bump_vector = bump_color.rgb * vec3(2.0) - vec3(1.0);
+
+    float base_shading = dot(bump_vector, normalize(vec3(0.0, 0.0, 1.0)));
+
+    // Lightmap stage
+    scratch_color = scratch_color.rgb * lightmap_color.rgb;
+    scratch_color.rgb *= vec3(base_shading);
+
+    // Fog stage
     float clamped = clamp(distance_from_camera, sky_fog_data.sky_fog_from, sky_fog_data.sky_fog_to);
     float fog_density = (clamped - sky_fog_data.sky_fog_from) / (sky_fog_data.sky_fog_to - sky_fog_data.sky_fog_from) * sky_fog_data.max_opacity;
     scratch_color = mix(scratch_color.rgb, sky_fog_data.sky_fog_color.rgb, fog_density);
