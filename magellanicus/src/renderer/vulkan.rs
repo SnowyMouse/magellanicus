@@ -82,7 +82,9 @@ impl VulkanRenderer {
             MSAA::MSAA2x => SampleCount::Sample2,
             MSAA::MSAA4x => SampleCount::Sample4,
             MSAA::MSAA8x => SampleCount::Sample8,
-            MSAA::MSAA16x => SampleCount::Sample16
+            MSAA::MSAA16x => SampleCount::Sample16,
+            MSAA::MSAA32x => SampleCount::Sample32,
+            MSAA::MSAA64x => SampleCount::Sample64
         };
 
         let color = device.physical_device().properties().sampled_image_color_sample_counts;

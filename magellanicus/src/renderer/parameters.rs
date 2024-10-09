@@ -42,6 +42,8 @@ pub enum MSAA {
     MSAA4x = 4,
     MSAA8x = 8,
     MSAA16x = 16,
+    MSAA32x = 32,
+    MSAA64x = 64,
 }
 
 impl Default for RendererParameters {

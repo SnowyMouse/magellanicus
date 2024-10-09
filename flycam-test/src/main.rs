@@ -56,7 +56,9 @@ struct Arguments {
 
     /// MSAA setting to use.
     ///
-    /// Must be 1, 2, 4, 8, or 16. (1 = no MSAA)
+    /// Note that your GPU may not support all options. If so, you will get an error.
+    ///
+    /// Must be 1, 2, 4, 8, or 16. (1 = no MSAA).
     #[arg(long = "msaa", short = 'M', default_value = "1")]
     pub msaa: u32
 
@@ -83,8 +85,10 @@ fn main() -> Result<(), String> {
         4 => MSAA::MSAA4x,
         8 => MSAA::MSAA8x,
         16 => MSAA::MSAA16x,
+        32 => MSAA::MSAA32x,
+        64 => MSAA::MSAA64x,
         _ => {
-            eprintln!("MSAA must be 1, 2, 4, 8, or 16.");
+            eprintln!("MSAA must be 1, 2, 4, 8, 16, 32, or 64.");
             MSAA::NoMSAA
         }
     };
