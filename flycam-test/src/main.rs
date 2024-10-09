@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use magellanicus::renderer::{AddBSPParameter, AddBSPParameterLightmapMaterial, AddBSPParameterLightmapSet, AddBitmapBitmapParameter, AddBitmapParameter, AddBitmapSequenceParameter, AddShaderBasicShaderData, AddShaderData, AddShaderEnvironmentShaderData, AddShaderParameter, AddSkyParameter, BSP3DNode, BSP3DNodeChild, BSP3DPlane, BSPCluster, BSPData, BSPLeaf, BSPPortal, BSPSubcluster, BitmapFormat, BitmapSprite, BitmapType, Renderer, RendererParameters, Resolution, ShaderType};
+use magellanicus::renderer::{AddBSPParameter, AddBSPParameterLightmapMaterial, AddBSPParameterLightmapSet, AddBitmapBitmapParameter, AddBitmapParameter, AddBitmapSequenceParameter, AddShaderBasicShaderData, AddShaderData, AddShaderEnvironmentShaderData, AddShaderParameter, AddSkyParameter, BSP3DNode, BSP3DNodeChild, BSP3DPlane, BSPCluster, BSPData, BSPLeaf, BSPPortal, BSPSubcluster, BitmapFormat, BitmapSprite, BitmapType, Renderer, RendererParameters, Resolution, ShaderType, MSAA};
 use std::collections::HashMap;
 use std::mem::transmute;
 use std::path::Path;
@@ -52,7 +52,14 @@ struct Arguments {
     ///
     /// Must be between 1 and 4.
     #[arg(long = "viewports", short = 'v', default_value = "1")]
-    pub viewports: usize
+    pub viewports: usize,
+
+    /// MSAA setting to use.
+    ///
+    /// Must be 1, 2, 4, 8, or 16. (1 = no MSAA)
+    #[arg(long = "msaa", short = 'M', default_value = "1")]
+    pub msaa: u32
+
 }
 
 struct ScenarioData {
@@ -63,12 +70,24 @@ struct ScenarioData {
 }
 
 fn main() -> Result<(), String> {
-    let Arguments { tags, scenario, engine, mut viewports, mouse_sensitivity } = Arguments::parse();
+    let Arguments { tags, scenario, engine, mut viewports, mouse_sensitivity, msaa } = Arguments::parse();
 
     if !(1..=4).contains(&viewports) {
         eprintln!("--viewports ({viewports}) must be between 1-4; clamping");
         viewports = viewports.clamp(1, 4);
     }
+
+    let msaa = match msaa {
+        1 => MSAA::NoMSAA,
+        2 => MSAA::MSAA2x,
+        4 => MSAA::MSAA4x,
+        8 => MSAA::MSAA8x,
+        16 => MSAA::MSAA16x,
+        _ => {
+            eprintln!("MSAA must be 1, 2, 4, 8, or 16.");
+            MSAA::NoMSAA
+        }
+    };
 
     let first_tags_dir: &Path = tags.get(0).unwrap().as_ref();
 
@@ -129,7 +148,8 @@ fn main() -> Result<(), String> {
             Renderer::new(&window, RendererParameters {
                 resolution: Resolution { width: 1280, height: 960 },
                 number_of_viewports: viewports,
-                vsync: false
+                vsync: false,
+                msaa
             })
         }.unwrap();
 

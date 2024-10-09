@@ -14,7 +14,7 @@ use crate::error::{Error, MResult};
 use crate::renderer::data::BSP;
 use crate::renderer::vulkan::helper::{build_swapchain, LoadedVulkan};
 use crate::renderer::vulkan::vertex::{VulkanFogData, VulkanModelData, VulkanModelVertex};
-use crate::renderer::{DefaultType, Renderer, RendererParameters, Resolution};
+use crate::renderer::{DefaultType, Renderer, RendererParameters, Resolution, MSAA};
 pub use bitmap::*;
 pub use bsp::*;
 pub use geometry::*;
@@ -31,14 +31,14 @@ use std::vec::Vec;
 use std::{eprintln, format, vec};
 use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage};
 use vulkano::command_buffer::allocator::{StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo};
-use vulkano::command_buffer::{AutoCommandBufferBuilder, BlitImageInfo, CommandBufferInheritanceInfo, CommandBufferInheritanceRenderPassType, CommandBufferInheritanceRenderingInfo, CommandBufferUsage, PrimaryAutoCommandBuffer, PrimaryCommandBufferAbstract, RenderingAttachmentInfo, RenderingInfo, SecondaryAutoCommandBuffer};
+use vulkano::command_buffer::{AutoCommandBufferBuilder, BlitImageInfo, CommandBufferInheritanceInfo, CommandBufferInheritanceRenderPassType, CommandBufferInheritanceRenderingInfo, CommandBufferUsage, PrimaryAutoCommandBuffer, PrimaryCommandBufferAbstract, RenderingAttachmentInfo, RenderingInfo, ResolveImageInfo, SecondaryAutoCommandBuffer};
 use vulkano::descriptor_set::allocator::{StandardDescriptorSetAllocator, StandardDescriptorSetAllocatorCreateInfo};
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::device::{Device, Queue};
 use vulkano::format::Format;
 use vulkano::image::sampler::{Sampler, SamplerCreateInfo};
 use vulkano::image::view::ImageView;
-use vulkano::image::{Image, ImageCreateInfo, ImageType, ImageUsage};
+use vulkano::image::{Image, ImageCreateInfo, ImageType, ImageUsage, SampleCount};
 use vulkano::instance::Instance;
 use vulkano::memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator};
 use vulkano::padded::Padded;
@@ -67,6 +67,7 @@ pub struct VulkanRenderer {
     swapchain_images: Vec<Arc<Image>>,
     swapchain_image_views: Vec<Arc<ImageView>>,
     default_2d_sampler: Arc<Sampler>,
+    samples_per_pixel: SampleCount
 }
 
 impl VulkanRenderer {
@@ -75,6 +76,24 @@ impl VulkanRenderer {
         surface: &(impl HasRawWindowHandle + HasRawDisplayHandle)
     ) -> MResult<Self> {
         let LoadedVulkan { device, instance, surface, queue} = helper::load_vulkan_and_get_queue(surface)?;
+
+        let samples_per_pixel = match renderer_parameters.msaa {
+            MSAA::NoMSAA => SampleCount::Sample1,
+            MSAA::MSAA2x => SampleCount::Sample2,
+            MSAA::MSAA4x => SampleCount::Sample4,
+            MSAA::MSAA8x => SampleCount::Sample8,
+            MSAA::MSAA16x => SampleCount::Sample16
+        };
+
+        let color = device.physical_device().properties().sampled_image_color_sample_counts;
+        let depth = device.physical_device().properties().sampled_image_depth_sample_counts;
+        let intersection = color & depth;
+        if !intersection.contains_enum(samples_per_pixel) {
+            return Err(
+                Error::from_vulkan_impl_error(format!("{}x MSAA is unsupported by your device; only these are supported:{}",
+                                                      renderer_parameters.msaa as u32,
+                                                      intersection.into_iter().map(|s| format!(" {}", s as u32)).collect::<String>())));
+        }
 
         let command_buffer_allocator = StandardCommandBufferAllocator::new(
             device.clone(),
@@ -103,7 +122,7 @@ impl VulkanRenderer {
 
         let (swapchain, swapchain_images) = build_swapchain(device.clone(), surface.clone(), output_format, renderer_parameters)?;
 
-        let pipelines = load_all_pipelines(device.clone())?;
+        let pipelines = load_all_pipelines(device.clone(), samples_per_pixel)?;
 
         let swapchain_image_views = swapchain_images.iter().map(|v| {
             ImageView::new_default(v.clone()).unwrap()
@@ -125,7 +144,8 @@ impl VulkanRenderer {
             swapchain_image_views,
             memory_allocator,
             swapchain_images,
-            default_2d_sampler
+            default_2d_sampler,
+            samples_per_pixel
         })
     }
 
@@ -180,6 +200,7 @@ impl VulkanRenderer {
                 extent: final_color_view.image().extent(),
                 format: OFFLINE_PIPELINE_COLOR_FORMAT,
                 image_type: ImageType::Dim2d,
+                samples: renderer.renderer.samples_per_pixel,
                 usage: ImageUsage::TRANSFER_SRC | ImageUsage::COLOR_ATTACHMENT,
                 ..Default::default()
             },
@@ -192,6 +213,7 @@ impl VulkanRenderer {
                 extent: final_color_view.image().extent(),
                 format: Format::D32_SFLOAT,
                 image_type: ImageType::Dim2d,
+                samples: color_view.image().samples(),
                 usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT,
                 ..Default::default()
             },
@@ -341,7 +363,31 @@ impl VulkanRenderer {
         Self::draw_split_screen_bars(renderer, &mut command_builder, width, height);
 
         command_builder.end_rendering().expect("failed to end rendering");
-        command_builder.blit_image(BlitImageInfo::images(color_view.image().clone(), final_color_view.image().clone())).unwrap();
+
+        let staging_view = if color_view.image().samples() != SampleCount::Sample1 {
+            let resolved_color_view = ImageView::new_default(Image::new(
+                renderer.renderer.memory_allocator.clone(),
+                ImageCreateInfo {
+                    extent: color_view.image().extent(),
+                    format: color_view.image().format(),
+                    image_type: color_view.image().image_type(),
+                    usage: ImageUsage::TRANSFER_SRC | ImageUsage::TRANSFER_DST | ImageUsage::COLOR_ATTACHMENT,
+                    ..Default::default()
+                },
+                AllocationCreateInfo::default()
+            ).unwrap())
+                .unwrap();
+
+            command_builder.resolve_image(ResolveImageInfo::images(color_view.image().clone(), resolved_color_view.image().clone()))
+                .expect("resolve fail");
+
+            resolved_color_view
+        }
+        else {
+            color_view
+        };
+
+        command_builder.blit_image(BlitImageInfo::images(staging_view.image().clone(), final_color_view.image().clone())).unwrap();
 
         let commands = command_builder.build().expect("failed to build command builder");
 

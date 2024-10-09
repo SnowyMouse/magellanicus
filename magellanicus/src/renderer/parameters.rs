@@ -28,7 +28,20 @@ pub struct RendererParameters {
     /// Enable vSync.
     ///
     /// Default = false
-    pub vsync: bool
+    pub vsync: bool,
+
+    /// Number of samples per pixel.
+    pub msaa: MSAA
+}
+
+#[derive(Copy, Clone, PartialEq, Default)]
+pub enum MSAA {
+    #[default]
+    NoMSAA = 1,
+    MSAA2x = 2,
+    MSAA4x = 4,
+    MSAA8x = 8,
+    MSAA16x = 16,
 }
 
 impl Default for RendererParameters {
@@ -36,7 +49,8 @@ impl Default for RendererParameters {
         Self {
             resolution: Resolution { width: 640, height: 480 },
             number_of_viewports: 1,
-            vsync: false
+            vsync: false,
+            msaa: Default::default()
         }
     }
 }

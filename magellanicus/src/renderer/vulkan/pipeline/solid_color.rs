@@ -5,6 +5,7 @@ use crate::renderer::vulkan::{VulkanPipelineData, OFFLINE_PIPELINE_COLOR_FORMAT}
 use alloc::sync::Arc;
 use std::vec;
 use vulkano::device::Device;
+use vulkano::image::SampleCount;
 use vulkano::pipeline::graphics::color_blend::ColorBlendAttachmentState;
 use vulkano::pipeline::graphics::vertex_input::Vertex;
 use vulkano::pipeline::GraphicsPipeline;
@@ -28,12 +29,13 @@ pub struct SolidColorShader {
 }
 
 impl SolidColorShader {
-    pub fn new(device: Arc<Device>) -> MResult<Self> {
+    pub fn new(device: Arc<Device>, samples: SampleCount) -> MResult<Self> {
         let pipeline = load_pipeline(device, vertex::load, fragment::load, &PipelineSettings {
             depth_access: DepthAccess::DepthWrite,
             vertex_buffer_descriptions: vec![VulkanModelVertex::per_vertex()],
             alpha_blending: false,
-            color_blend_attachment_state: ColorBlendAttachmentState::default()
+            color_blend_attachment_state: ColorBlendAttachmentState::default(),
+            samples
         }, OFFLINE_PIPELINE_COLOR_FORMAT)?;
 
         Ok(Self { pipeline })

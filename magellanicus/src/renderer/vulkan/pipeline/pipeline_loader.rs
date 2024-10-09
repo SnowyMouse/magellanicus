@@ -4,6 +4,7 @@ use std::vec::Vec;
 use std::vec;
 use vulkano::device::Device;
 use vulkano::format::Format;
+use vulkano::image::SampleCount;
 use vulkano::pipeline::graphics::color_blend::{AttachmentBlend, ColorBlendAttachmentState, ColorBlendState};
 use vulkano::pipeline::graphics::depth_stencil::{CompareOp, DepthState, DepthStencilState};
 use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
@@ -46,7 +47,7 @@ pub enum DepthAccess {
     NoDepth
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct PipelineSettings {
     /// Determines how depth is accessed.
     pub depth_access: DepthAccess,
@@ -58,7 +59,22 @@ pub struct PipelineSettings {
     pub color_blend_attachment_state: ColorBlendAttachmentState,
 
     /// If true, enable alpha blending. Otherwise, the pixel color will be replaced.
-    pub alpha_blending: bool
+    pub alpha_blending: bool,
+
+    /// Sample count to use.
+    pub samples: SampleCount
+}
+
+impl Default for PipelineSettings {
+    fn default() -> Self {
+        Self {
+            depth_access: Default::default(),
+            vertex_buffer_descriptions: Default::default(),
+            color_blend_attachment_state: Default::default(),
+            alpha_blending: Default::default(),
+            samples: SampleCount::Sample1,
+        }
+    }
 }
 
 pub fn load_pipeline(
@@ -118,7 +134,10 @@ pub fn load_pipeline(
                 front_face: FrontFace::Clockwise,
                 ..RasterizationState::default()
             }),
-            multisample_state: Some(MultisampleState::default()),
+            multisample_state: Some(MultisampleState {
+                rasterization_samples: settings.samples,
+                ..MultisampleState::default()
+            }),
             color_blend_state: Some(blend),
             dynamic_state: [
                 DynamicState::Viewport,

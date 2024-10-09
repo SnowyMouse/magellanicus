@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use vulkano::device::Device;
 use std::vec;
+use vulkano::image::SampleCount;
 use vulkano::pipeline::graphics::color_blend::{AttachmentBlend, ColorBlendAttachmentState};
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::pipeline::graphics::vertex_input::Vertex;
@@ -28,7 +29,7 @@ pub struct SimpleTextureShader {
 }
 
 impl SimpleTextureShader {
-    pub fn new(device: Arc<Device>) -> MResult<Self> {
+    pub fn new(device: Arc<Device>, samples: SampleCount) -> MResult<Self> {
         let pipeline = load_pipeline(device, vertex::load, fragment::load, &PipelineSettings {
             depth_access: DepthAccess::DepthWrite,
             vertex_buffer_descriptions: vec![
@@ -40,7 +41,8 @@ impl SimpleTextureShader {
             color_blend_attachment_state: ColorBlendAttachmentState {
                 blend: Some(AttachmentBlend::additive()),
                 ..ColorBlendAttachmentState::default()
-            }
+            },
+            samples
         }, OFFLINE_PIPELINE_COLOR_FORMAT)?;
 
         Ok(Self { pipeline })
