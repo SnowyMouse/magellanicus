@@ -60,7 +60,15 @@ struct Arguments {
     ///
     /// Must be 1, 2, 4, 8, or 16. (1 = no MSAA).
     #[arg(long = "msaa", short = 'M', default_value = "1")]
-    pub msaa: u32
+    pub msaa: u32,
+
+
+    /// Anisotropic filtering setting to use.
+    ///
+    /// Most GPUs support up to 16x anisotropic filtering. This setting generally improves quality
+    /// without significantly affecting performance, especially on discrete GPUs.
+    #[arg(long = "af", short = 'A')]
+    pub anisotropic_filtering: Option<f32>
 
 }
 
@@ -72,7 +80,15 @@ struct ScenarioData {
 }
 
 fn main() -> Result<(), String> {
-    let Arguments { tags, scenario, engine, mut viewports, mouse_sensitivity, msaa } = Arguments::parse();
+    let Arguments {
+        anisotropic_filtering,
+        tags,
+        scenario,
+        engine,
+        mut viewports,
+        mouse_sensitivity,
+        msaa
+    } = Arguments::parse();
 
     if !(1..=4).contains(&viewports) {
         eprintln!("--viewports ({viewports}) must be between 1-4; clamping");
@@ -88,8 +104,16 @@ fn main() -> Result<(), String> {
         32 => MSAA::MSAA32x,
         64 => MSAA::MSAA64x,
         _ => {
-            eprintln!("MSAA must be 1, 2, 4, 8, 16, 32, or 64.");
+            eprintln!("MSAA must be 1, 2, 4, 8, 16, 32, or 64. Disabling MSAA...");
             MSAA::NoMSAA
+        }
+    };
+
+    let anisotropic_filtering = match anisotropic_filtering {
+        Some(1.0..) | None => anisotropic_filtering,
+        Some(n) => {
+            eprintln!("Anisotropic filtering must be 1 or higher. Disabling AF...");
+            None
         }
     };
 
@@ -153,6 +177,7 @@ fn main() -> Result<(), String> {
                 resolution: Resolution { width: 1280, height: 960 },
                 number_of_viewports: viewports,
                 vsync: false,
+                anisotropic_filtering,
                 msaa
             })
         }.unwrap();

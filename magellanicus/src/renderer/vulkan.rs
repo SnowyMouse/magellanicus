@@ -75,7 +75,7 @@ impl VulkanRenderer {
         renderer_parameters: &RendererParameters,
         surface: &(impl HasRawWindowHandle + HasRawDisplayHandle)
     ) -> MResult<Self> {
-        let LoadedVulkan { device, instance, surface, queue} = helper::load_vulkan_and_get_queue(surface)?;
+        let LoadedVulkan { device, instance, surface, queue} = helper::load_vulkan_and_get_queue(surface, renderer_parameters.anisotropic_filtering)?;
 
         let samples_per_pixel = match renderer_parameters.msaa {
             MSAA::NoMSAA => SampleCount::Sample1,
@@ -86,6 +86,15 @@ impl VulkanRenderer {
             MSAA::MSAA32x => SampleCount::Sample32,
             MSAA::MSAA64x => SampleCount::Sample64
         };
+
+        if let Some(n) = renderer_parameters.anisotropic_filtering {
+            let max = device.physical_device().properties().max_sampler_anisotropy;
+            if max < n || n < 1.0 {
+                return Err(
+                    Error::from_vulkan_impl_error(format!("{n}x AF is unsupported by your device; supported values are 1-{max}"))
+                )
+            }
+        }
 
         let color = device.physical_device().properties().sampled_image_color_sample_counts;
         let depth = device.physical_device().properties().sampled_image_depth_sample_counts;
@@ -130,7 +139,13 @@ impl VulkanRenderer {
             ImageView::new_default(v.clone()).unwrap()
         }).collect();
 
-        let default_2d_sampler = Sampler::new(device.clone(), SamplerCreateInfo::simple_repeat_linear())?;
+        let default_2d_sampler = Sampler::new(
+            device.clone(),
+            SamplerCreateInfo {
+                anisotropy: renderer_parameters.anisotropic_filtering,
+                ..SamplerCreateInfo::simple_repeat_linear()
+            }
+        )?;
 
         Ok(Self {
             current_resolution: renderer_parameters.resolution,

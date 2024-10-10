@@ -31,7 +31,10 @@ pub struct RendererParameters {
     pub vsync: bool,
 
     /// Number of samples per pixel.
-    pub msaa: MSAA
+    pub msaa: MSAA,
+
+    /// Anisotropic filtering.
+    pub anisotropic_filtering: Option<f32>
 }
 
 #[derive(Copy, Clone, PartialEq, Default)]
@@ -52,7 +55,8 @@ impl Default for RendererParameters {
             resolution: Resolution { width: 640, height: 480 },
             number_of_viewports: 1,
             vsync: false,
-            msaa: Default::default()
+            msaa: Default::default(),
+            anisotropic_filtering: None
         }
     }
 }

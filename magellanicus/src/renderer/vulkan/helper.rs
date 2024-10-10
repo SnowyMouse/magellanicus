@@ -19,7 +19,10 @@ pub struct LoadedVulkan {
     pub surface: Arc<Surface>,
 }
 
-pub unsafe fn load_vulkan_and_get_queue(surface: &(impl HasRawWindowHandle + HasRawDisplayHandle)) -> MResult<LoadedVulkan> {
+pub unsafe fn load_vulkan_and_get_queue(
+    surface: &(impl HasRawWindowHandle + HasRawDisplayHandle),
+    anisotropic_filtering: Option<f32>
+) -> MResult<LoadedVulkan> {
     let library = VulkanLibrary::new()?;
 
     let enabled_extensions = Surface::required_extensions(surface);
@@ -36,7 +39,7 @@ pub unsafe fn load_vulkan_and_get_queue(surface: &(impl HasRawWindowHandle + Has
     }.clone();
 
     let required_device_features = Features {
-        sampler_anisotropy: true,
+        sampler_anisotropy: anisotropic_filtering.is_some(),
         ..Features::empty()
     };
 
