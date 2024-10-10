@@ -77,8 +77,15 @@ struct Arguments {
     pub anisotropic_filtering: Option<f32>,
 
     /// Set the resolution of the renderer.
-    #[arg(long = "resolution", short = 'R', default_value = "1280x960")]
-    pub resolution: String
+    ///
+    /// * On fullscreen mode, the default will be your monitor's resolution.
+    /// * On windowed mode, the default will be your mom.
+    #[arg(long = "resolution", short = 'R')]
+    pub resolution: Option<String>,
+
+    /// Use exclusive fullscreen mode.
+    #[arg(long = "fullscreen", short = 'F')]
+    pub fullscreen: bool
 
 }
 
@@ -99,10 +106,31 @@ fn main() -> Result<(), String> {
         mouse_sensitivity,
         msaa,
         vsync,
-        resolution
+        resolution,
+        fullscreen
     } = Arguments::parse();
 
-    let resolution = parse_resolution(resolution)?;
+    let sdl = sdl2::init()?;
+    let mut events = sdl.event_pump()?;
+    let video = sdl.video()?;
+    let mouse = sdl.mouse();
+
+    let resolution = match resolution {
+        Some(resolution) => parse_resolution(resolution)?,
+        None => {
+            let res = video.current_display_mode(0)
+                .map_err(|e| format!("Can't determine resolution: {e:?}"))?;
+            if fullscreen {
+                Resolution { width: res.w as u32, height: res.h as u32 }
+            }
+            else {
+                Resolution {
+                    width: ((res.w as u32) * 3 / 4).clamp(4, 1280),
+                    height: ((res.h as u32) * 3 / 4).clamp(3, 960)
+                }
+            }
+        }
+    };
 
     if !(1..=4).contains(&viewports) {
         eprintln!("--viewports ({viewports}) must be between 1-4; clamping");
@@ -174,14 +202,18 @@ fn main() -> Result<(), String> {
         engine,
     };
 
-    let sdl = sdl2::init()?;
-    let mut events = sdl.event_pump()?;
-    let video = sdl.video()?;
-    let mouse = sdl.mouse();
-    let mut window = video.window(&window_title, resolution.width, resolution.height)
+    let mut window_builder = video.window(&window_title, resolution.width, resolution.height);
+
+    window_builder
         .vulkan()
         .metal_view()
-        .position_centered()
+        .position_centered();
+
+    if fullscreen {
+        window_builder.fullscreen();
+    }
+
+    let mut window = window_builder
         .build()
         .unwrap();
 
