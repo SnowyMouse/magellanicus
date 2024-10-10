@@ -62,7 +62,6 @@ struct Arguments {
     #[arg(long = "msaa", short = 'M', default_value = "1")]
     pub msaa: u32,
 
-
     /// Enable vSync.
     ///
     /// Prevents tearing by synchronizing presenting to vertical sync. This can improve framerate
@@ -70,13 +69,16 @@ struct Arguments {
     #[arg(long = "vsync", short = 'V')]
     pub vsync: bool,
 
-
     /// Anisotropic filtering setting to use.
     ///
     /// Most GPUs support up to 16x anisotropic filtering. This setting generally improves quality
     /// without significantly affecting performance, especially on discrete GPUs.
     #[arg(long = "af", short = 'A')]
-    pub anisotropic_filtering: Option<f32>
+    pub anisotropic_filtering: Option<f32>,
+
+    /// Set the resolution of the renderer.
+    #[arg(long = "resolution", short = 'R', default_value = "1280x960")]
+    pub resolution: String
 
 }
 
@@ -96,8 +98,11 @@ fn main() -> Result<(), String> {
         mut viewports,
         mouse_sensitivity,
         msaa,
-        vsync
+        vsync,
+        resolution
     } = Arguments::parse();
+
+    let resolution = parse_resolution(resolution)?;
 
     if !(1..=4).contains(&viewports) {
         eprintln!("--viewports ({viewports}) must be between 1-4; clamping");
@@ -173,7 +178,7 @@ fn main() -> Result<(), String> {
     let mut events = sdl.event_pump()?;
     let video = sdl.video()?;
     let mouse = sdl.mouse();
-    let mut window = video.window(&window_title, 1280, 960)
+    let mut window = video.window(&window_title, resolution.width, resolution.height)
         .vulkan()
         .metal_view()
         .position_centered()
@@ -183,7 +188,7 @@ fn main() -> Result<(), String> {
     let renderer =
         unsafe {
             Renderer::new(&window, RendererParameters {
-                resolution: Resolution { width: 1280, height: 960 },
+                resolution,
                 number_of_viewports: viewports,
                 vsync,
                 anisotropic_filtering,
@@ -1071,4 +1076,22 @@ fn rotate(rotation: [f32; 3], yaw_delta: f32, pitch_delta: f32) -> [f32; 3] {
     let pitch_sine = pitch.sin();
     let pitch_cosine = pitch.cos();
     [yaw.cos() * pitch_cosine, yaw.sin() * pitch_cosine, pitch_sine]
+}
+
+fn parse_resolution(resolution_string: String) -> Result<Resolution, String> {
+    if resolution_string.chars().filter(|c| *c == 'x' || *c == ',').count() != 1 {
+        return Err(format!("Invalid resolution {resolution_string}; bad format"));
+    }
+    let first_comma = resolution_string
+        .find("x")
+        .unwrap_or_else(|| resolution_string.find(",").unwrap());
+    let (width,height) = resolution_string.split_at(first_comma);
+    let Ok((width,height)) = width.parse::<u32>()
+        .and_then(|w| Ok((w, height[1..].parse::<u32>()?))) else {
+        return Err(format!("Invalid resolution {resolution_string}; must be numberxnumber or number,number"));
+    };
+    if width == 0 || height == 0 {
+        return Err(format!("Invalid resolution {resolution_string}; at least one dimension is zero"));
+    }
+    Ok(Resolution { width, height })
 }
