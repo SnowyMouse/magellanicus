@@ -293,7 +293,7 @@ impl BSPData {
                 if n >= self.nodes.len() {
                     return Err(Error::from_data_error_string(format!("broken BSP: node #{n}, referenced by node #{node}, does not exist")))
                 }
-                self.validate_3d_node(n, remaining_tests - 1, nodes_tested)?;
+                self.validate_3d_node(n, remaining_tests, nodes_tested)?;
             }
             BSP3DNodeChild::Leaf(n) => {
                 if n >= self.leaves.len() {
