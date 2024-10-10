@@ -63,6 +63,14 @@ struct Arguments {
     pub msaa: u32,
 
 
+    /// Enable vSync.
+    ///
+    /// Prevents tearing by synchronizing presenting to vertical sync. This can improve framerate
+    /// stability, but it will limit performance and increase latency.
+    #[arg(long = "vsync", short = 'V')]
+    pub vsync: bool,
+
+
     /// Anisotropic filtering setting to use.
     ///
     /// Most GPUs support up to 16x anisotropic filtering. This setting generally improves quality
@@ -87,7 +95,8 @@ fn main() -> Result<(), String> {
         engine,
         mut viewports,
         mouse_sensitivity,
-        msaa
+        msaa,
+        vsync
     } = Arguments::parse();
 
     if !(1..=4).contains(&viewports) {
@@ -176,7 +185,7 @@ fn main() -> Result<(), String> {
             Renderer::new(&window, RendererParameters {
                 resolution: Resolution { width: 1280, height: 960 },
                 number_of_viewports: viewports,
-                vsync: false,
+                vsync,
                 anisotropic_filtering,
                 msaa
             })
