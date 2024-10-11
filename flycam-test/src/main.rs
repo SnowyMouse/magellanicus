@@ -154,7 +154,7 @@ fn main() -> Result<(), String> {
     let anisotropic_filtering = match anisotropic_filtering {
         Some(1.0..) | None => anisotropic_filtering,
         Some(n) => {
-            eprintln!("Anisotropic filtering must be 1 or higher. Disabling AF...");
+            eprintln!("Anisotropic filtering ({n}) must be 1 or higher. Disabling AF...");
             None
         }
     };

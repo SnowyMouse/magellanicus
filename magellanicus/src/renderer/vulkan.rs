@@ -14,7 +14,7 @@ use crate::error::{Error, MResult};
 use crate::renderer::data::BSP;
 use crate::renderer::vulkan::helper::{build_swapchain, LoadedVulkan};
 use crate::renderer::vulkan::vertex::{VulkanFogData, VulkanModelData, VulkanModelVertex};
-use crate::renderer::{DefaultType, Renderer, RendererParameters, Resolution, MSAA};
+use crate::renderer::{Renderer, RendererParameters, Resolution, MSAA};
 pub use bitmap::*;
 pub use bsp::*;
 pub use geometry::*;
@@ -22,11 +22,11 @@ use glam::{Mat3, Mat4, Vec3};
 pub use material::*;
 pub use pipeline::*;
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
-use std::borrow::ToOwned;
 use std::boxed::Box;
 use std::collections::BTreeMap;
 use std::fmt::Display;
 use std::sync::Arc;
+use std::time::Duration;
 use std::vec::Vec;
 use std::{eprintln, format, vec};
 use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage};
@@ -64,10 +64,17 @@ pub struct VulkanRenderer {
     pipelines: BTreeMap<VulkanPipelineType, Arc<dyn VulkanPipelineData>>,
     swapchain: Arc<Swapchain>,
     surface: Arc<Surface>,
-    swapchain_images: Vec<Arc<Image>>,
-    swapchain_image_views: Vec<Arc<ImageView>>,
+    swapchain_image_views: Vec<SwapchainImages>,
     default_2d_sampler: Arc<Sampler>,
     samples_per_pixel: SampleCount
+}
+
+#[derive(Clone)]
+struct SwapchainImages {
+    pub output: Arc<ImageView>,
+    pub color: Arc<ImageView>,
+    pub depth: Arc<ImageView>,
+    pub resolve: Option<Arc<ImageView>>,
 }
 
 impl VulkanRenderer {
@@ -134,10 +141,7 @@ impl VulkanRenderer {
         let (swapchain, swapchain_images) = build_swapchain(device.clone(), surface.clone(), output_format, renderer_parameters)?;
 
         let pipelines = load_all_pipelines(device.clone(), samples_per_pixel)?;
-
-        let swapchain_image_views = swapchain_images.iter().map(|v| {
-            ImageView::new_default(v.clone()).unwrap()
-        }).collect();
+        let swapchain_image_views = Self::make_swapchain_images(swapchain_images, memory_allocator.clone(), samples_per_pixel);
 
         let default_2d_sampler = Sampler::new(
             device.clone(),
@@ -160,7 +164,6 @@ impl VulkanRenderer {
             surface,
             swapchain_image_views,
             memory_allocator,
-            swapchain_images,
             default_2d_sampler,
             samples_per_pixel
         })
@@ -188,20 +191,64 @@ impl VulkanRenderer {
         )?;
 
         self.swapchain = swapchain;
-        self.swapchain_images = swapchain_images;
-        self.swapchain_image_views = self.swapchain_images.iter().map(|i| ImageView::new_default(i.clone()).unwrap()).collect();
+        self.swapchain_image_views = Self::make_swapchain_images(swapchain_images, self.memory_allocator.clone(), self.samples_per_pixel);
         self.current_resolution = renderer_parameters.resolution;
 
         Ok(())
     }
 
+    fn make_swapchain_images(swapchain_images: Vec<Arc<Image>>, memory_allocator: Arc<StandardMemoryAllocator>, samples_per_pixel: SampleCount) -> Vec<SwapchainImages> {
+        swapchain_images.iter().map(|i| SwapchainImages {
+            output: ImageView::new_default(i.clone()).unwrap(),
+            color: ImageView::new_default(Image::new(
+                memory_allocator.clone(),
+                ImageCreateInfo {
+                    extent: i.extent(),
+                    format: OFFLINE_PIPELINE_COLOR_FORMAT,
+                    image_type: ImageType::Dim2d,
+                    samples: samples_per_pixel,
+                    usage: ImageUsage::TRANSFER_SRC | ImageUsage::COLOR_ATTACHMENT,
+                    ..Default::default()
+                },
+                AllocationCreateInfo::default(),
+            ).unwrap()).unwrap(),
+            depth: ImageView::new_default(Image::new(
+                memory_allocator.clone(),
+                ImageCreateInfo {
+                    extent: i.extent(),
+                    format: Format::D32_SFLOAT,
+                    image_type: ImageType::Dim2d,
+                    samples: samples_per_pixel,
+                    usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT,
+                    ..Default::default()
+                },
+                AllocationCreateInfo::default(),
+            ).unwrap()).unwrap(),
+            resolve: if samples_per_pixel != SampleCount::Sample1 {
+                Some(ImageView::new_default(Image::new(
+                    memory_allocator.clone(),
+                    ImageCreateInfo {
+                        extent: i.extent(),
+                        format: OFFLINE_PIPELINE_COLOR_FORMAT,
+                        image_type: ImageType::Dim2d,
+                        samples: SampleCount::Sample1,
+                        usage: ImageUsage::TRANSFER_SRC | ImageUsage::TRANSFER_DST | ImageUsage::COLOR_ATTACHMENT,
+                        ..Default::default()
+                    },
+                    AllocationCreateInfo::default(),
+                ).unwrap()).unwrap())
+            } else {
+                None
+            },
+        }).collect()
+    }
+
     fn draw_frame_infallible(renderer: &mut Renderer, image_index: u32, image_future: SwapchainAcquireFuture) -> bool {
-        let default_bsp = BSP::default();
         let currently_loaded_bsp = renderer
             .current_bsp
             .as_ref()
             .and_then(|f| renderer.bsps.get(f))
-            .unwrap_or(&default_bsp);
+            .expect("no BSP loaded");
 
         let mut command_builder = AutoCommandBufferBuilder::primary(
             &renderer.renderer.command_buffer_allocator,
@@ -209,48 +256,24 @@ impl VulkanRenderer {
             CommandBufferUsage::OneTimeSubmit
         ).expect("failed to init command builder");
 
-        let final_color_view = renderer.renderer.swapchain_image_views[image_index as usize].clone();
-
-        let color_view = ImageView::new_default(Image::new(
-            renderer.renderer.memory_allocator.clone(),
-            ImageCreateInfo {
-                extent: final_color_view.image().extent(),
-                format: OFFLINE_PIPELINE_COLOR_FORMAT,
-                image_type: ImageType::Dim2d,
-                samples: renderer.renderer.samples_per_pixel,
-                usage: ImageUsage::TRANSFER_SRC | ImageUsage::COLOR_ATTACHMENT,
-                ..Default::default()
-            },
-            AllocationCreateInfo::default()
-        ).unwrap()).unwrap();
-
-        let depth_image = Image::new(
-            renderer.renderer.memory_allocator.clone(),
-            ImageCreateInfo {
-                extent: final_color_view.image().extent(),
-                format: Format::D32_SFLOAT,
-                image_type: ImageType::Dim2d,
-                samples: color_view.image().samples(),
-                usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT,
-                ..Default::default()
-            },
-            AllocationCreateInfo::default()
-        ).unwrap();
-        let depth_view = ImageView::new_default(depth_image).unwrap();
+        let images = renderer.renderer.swapchain_image_views[image_index as usize].clone();
+        let _ = image_future.wait(Some(Duration::from_millis(5000))).expect("waited too long");
+        renderer.renderer.future.as_mut().unwrap().cleanup_finished();
 
         // Clear this real quick
+        let default_background = [0.0f32, 0.0, 0.0, 1.0];
         command_builder.begin_rendering(RenderingInfo {
             color_attachments: vec![Some(RenderingAttachmentInfo {
                 load_op: AttachmentLoadOp::Clear,
                 store_op: AttachmentStoreOp::Store,
-                clear_value: Some([0.0, 0.0, 0.0, 1.0].into()),
-                ..RenderingAttachmentInfo::image_view(color_view.clone())
+                clear_value: Some(default_background.into()),
+                ..RenderingAttachmentInfo::image_view(images.color.clone())
             })],
             depth_attachment: Some(RenderingAttachmentInfo {
                 load_op: AttachmentLoadOp::Clear,
                 store_op: AttachmentStoreOp::Store,
                 clear_value: Some([1.0].into()),
-                ..RenderingAttachmentInfo::image_view(depth_view)
+                ..RenderingAttachmentInfo::image_view(images.depth.clone())
             }),
             ..Default::default()
         }).expect("failed to begin rendering");
@@ -311,15 +334,18 @@ impl VulkanRenderer {
 
             command_builder.set_viewport(0, [viewport].into_iter().collect()).unwrap();
 
-            draw_box(
-                renderer,
-                0.0,
-                0.0,
-                1.0,
-                1.0,
-                [fog_data.color[0], fog_data.color[1], fog_data.color[2], 1.0],
-                &mut command_builder
-            ).unwrap();
+            let sky_color = [fog_data.color[0], fog_data.color[1], fog_data.color[2], 1.0];
+            if sky_color != default_background {
+                draw_box(
+                    renderer,
+                    0.0,
+                    0.0,
+                    1.0,
+                    1.0,
+                    sky_color,
+                    &mut command_builder
+                ).unwrap();
+            }
 
             upload_fog_uniform(renderer, &fog_data, &mut command_builder);
 
@@ -354,7 +380,7 @@ impl VulkanRenderer {
                     desired_lightmap = None;
                 }
 
-                upload_lightmap_descriptor_set(renderer, desired_lightmap, &mut command_builder);
+                upload_lightmap_descriptor_set(renderer, desired_lightmap, &currently_loaded_bsp, &mut command_builder);
 
                 let index_buffer = geometry.vulkan.index_buffer.clone();
                 let index_count = index_buffer.len() as usize;
@@ -381,39 +407,24 @@ impl VulkanRenderer {
 
         command_builder.end_rendering().expect("failed to end rendering");
 
-        let staging_view = if color_view.image().samples() != SampleCount::Sample1 {
-            let resolved_color_view = ImageView::new_default(Image::new(
-                renderer.renderer.memory_allocator.clone(),
-                ImageCreateInfo {
-                    extent: color_view.image().extent(),
-                    format: color_view.image().format(),
-                    image_type: color_view.image().image_type(),
-                    usage: ImageUsage::TRANSFER_SRC | ImageUsage::TRANSFER_DST | ImageUsage::COLOR_ATTACHMENT,
-                    ..Default::default()
-                },
-                AllocationCreateInfo::default()
-            ).unwrap())
-                .unwrap();
-
-            command_builder.resolve_image(ResolveImageInfo::images(color_view.image().clone(), resolved_color_view.image().clone()))
-                .expect("resolve fail");
-
+        let staging_image = if let Some(resolved_color_view) = images.resolve.as_ref().map(|iv| iv.image()) {
+            command_builder.resolve_image(
+                ResolveImageInfo::images(images.color.image().clone(), resolved_color_view.clone())
+            ).expect("resolve fail");
             resolved_color_view
         }
         else {
-            color_view
+            images.color.image()
         };
 
-        command_builder.blit_image(BlitImageInfo::images(staging_view.image().clone(), final_color_view.image().clone())).unwrap();
+        command_builder.blit_image(BlitImageInfo::images(staging_image.clone(), images.output.image().clone())).unwrap();
 
         let commands = command_builder.build().expect("failed to build command builder");
 
-        let mut future = renderer.renderer
+        let future = renderer.renderer
             .future
             .take()
             .expect("there's no future :(");
-
-        future.cleanup_finished();
 
         let swapchain_present = SwapchainPresentInfo::swapchain_image_index(renderer.renderer.swapchain.clone(), image_index);
 
@@ -553,31 +564,14 @@ impl Error {
 fn upload_lightmap_descriptor_set(
     renderer: &Renderer,
     lightmap_index: Option<usize>,
+    bsp: &BSP,
     builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>
 ) {
     let pipeline = renderer.renderer.pipelines[&VulkanPipelineType::ShaderEnvironment].get_pipeline();
-    let sampler = renderer
-        .current_bsp
-        .as_ref()
-        .and_then(|b| renderer.bsps.get(b))
-        .and_then(|b| Some((b, lightmap_index?)))
-        .and_then(|(b, i)| b.vulkan.lightmap_images.get(&i))
-        .map(|b| b.to_owned())
-        .unwrap_or_else(|| {
-            let image = ImageView::new_default(renderer.get_default_2d(DefaultType::White).vulkan.image.clone()).unwrap();
-            (image, renderer.renderer.default_2d_sampler.clone())
-        });
-
-    let set = PersistentDescriptorSet::new(
-        renderer.renderer.descriptor_set_allocator.as_ref(),
-        pipeline.layout().set_layouts()[1].clone(),
-        [
-            WriteDescriptorSet::sampler(0, sampler.1),
-            WriteDescriptorSet::image_view(1, sampler.0),
-        ],
-        []
-    ).unwrap();
-
+    let set = lightmap_index
+        .and_then(|i| bsp.vulkan.lightmap_images.get(&i))
+        .map(|b| b.clone())
+        .unwrap_or_else(|| bsp.vulkan.null_lightmaps.clone());
     builder.bind_descriptor_sets(
         PipelineBindPoint::Graphics,
         pipeline.layout().clone(),

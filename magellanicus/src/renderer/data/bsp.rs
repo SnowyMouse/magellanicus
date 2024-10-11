@@ -19,19 +19,6 @@ pub struct BSP {
     pub draw_distance: f32
 }
 
-impl Default for BSP {
-    fn default() -> Self {
-        Self {
-            vulkan: Default::default(),
-            geometries: Default::default(),
-            bsp_data: Default::default(),
-            cluster_surfaces: Default::default(),
-            draw_distance: MIN_DRAW_DISTANCE_LIMIT,
-            geometry_indices_sorted_by_material: Default::default()
-        }
-    }
-}
-
 impl BSP {
     pub fn load_from_parameters(renderer: &mut Renderer, mut add_bsp_parameter: AddBSPParameter) -> MResult<Self> {
         struct BSPMaterialData<'a> {

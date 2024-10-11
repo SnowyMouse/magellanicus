@@ -1,25 +1,28 @@
 use crate::error::MResult;
-use crate::renderer::{AddBSPParameter, AddBSPParameterLightmapMaterial, Renderer};
+use crate::renderer::{AddBSPParameter, AddBSPParameterLightmapMaterial, DefaultType, Renderer};
 
-use crate::renderer::vulkan::default_allocation_create_info;
 use crate::renderer::vulkan::vertex::{VulkanModelVertex, VulkanModelVertexTextureCoords};
+use crate::renderer::vulkan::{default_allocation_create_info, VulkanPipelineType};
 use crate::vertex::ModelTriangle;
 use std::collections::BTreeMap;
 use std::string::String;
 use std::sync::Arc;
 use std::vec::Vec;
 use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer};
+use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::image::sampler::{Sampler, SamplerAddressMode, SamplerCreateInfo};
 use vulkano::image::view::{ImageView, ImageViewCreateInfo};
+use vulkano::pipeline::Pipeline;
 
-#[derive(Default)]
 pub struct VulkanBSPData {
-    pub lightmap_images: BTreeMap<usize, (Arc<ImageView>, Arc<Sampler>)>,
-    pub cluster_surface_index_buffers: Vec<Vec<Vec<Option<Subbuffer<[u16]>>>>>
+    pub lightmap_images: BTreeMap<usize, Arc<PersistentDescriptorSet>>,
+    pub cluster_surface_index_buffers: Vec<Vec<Vec<Option<Subbuffer<[u16]>>>>>,
+    pub null_lightmaps: Arc<PersistentDescriptorSet>
 }
 
 impl VulkanBSPData {
     pub fn new(renderer: &mut Renderer, param: &AddBSPParameter, surfaces_ranges: &Vec<Vec<Vec<Vec<ModelTriangle>>>>) -> MResult<Self> {
+        let shader_environment_pipeline = renderer.renderer.pipelines[&VulkanPipelineType::ShaderEnvironment].get_pipeline();
         let mut images = BTreeMap::new();
         if let Some(n) = &param.lightmap_bitmap {
             let image = renderer
@@ -51,7 +54,17 @@ impl VulkanBSPData {
                     }
                 )?;
 
-                images.insert(i, (lightmap, sampler));
+                let descriptor_set = PersistentDescriptorSet::new(
+                    renderer.renderer.descriptor_set_allocator.as_ref(),
+                    shader_environment_pipeline.layout().set_layouts()[1].clone(),
+                    [
+                        WriteDescriptorSet::sampler(0, sampler),
+                        WriteDescriptorSet::image_view(1, lightmap),
+                    ],
+                    []
+                )?;
+
+                images.insert(i, descriptor_set);
             }
         }
 
@@ -87,7 +100,17 @@ impl VulkanBSPData {
             )
             .collect();
 
-        Ok(Self { lightmap_images: images, cluster_surface_index_buffers })
+        let null_set = PersistentDescriptorSet::new(
+            renderer.renderer.descriptor_set_allocator.as_ref(),
+            shader_environment_pipeline.layout().set_layouts()[1].clone(),
+            [
+                WriteDescriptorSet::sampler(0, renderer.renderer.default_2d_sampler.clone()),
+                WriteDescriptorSet::image_view(1, ImageView::new_default(renderer.get_default_2d(DefaultType::White).vulkan.image.clone())?),
+            ],
+            []
+        ).unwrap();
+
+        Ok(Self { lightmap_images: images, cluster_surface_index_buffers, null_lightmaps: null_set })
     }
 }
 
