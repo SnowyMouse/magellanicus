@@ -29,7 +29,7 @@ pub struct Renderer {
     shaders: BTreeMap<Arc<String>, Shader>,
     geometries: BTreeMap<Arc<String>, Geometry>,
     skies: BTreeMap<Arc<String>, Sky>,
-    bsps: BTreeMap<Arc<String>, BSP>,
+    bsps: BTreeMap<Arc<String>, Arc<BSP>>,
 
     default_bitmaps: DefaultBitmaps,
     current_bsp: Option<Arc<String>>
@@ -250,7 +250,7 @@ impl Renderer {
 
         bsp.validate(self)?;
         let bsp = BSP::load_from_parameters(self, bsp)?;
-        self.bsps.insert(bsp_path, bsp);
+        self.bsps.insert(bsp_path, Arc::new(bsp));
         Ok(())
     }
 

@@ -11,7 +11,7 @@ mod vertex;
 mod material;
 
 use crate::error::{Error, MResult};
-use crate::renderer::data::BSP;
+use crate::renderer::data::{BSPGeometry, BSP};
 use crate::renderer::vulkan::helper::{build_swapchain, LoadedVulkan};
 use crate::renderer::vulkan::vertex::{VulkanFogData, VulkanModelData, VulkanModelVertex};
 use crate::renderer::{Renderer, RendererParameters, Resolution, MSAA};
@@ -49,6 +49,7 @@ use vulkano::render_pass::{AttachmentLoadOp, AttachmentStoreOp};
 use vulkano::swapchain::{acquire_next_image, Surface, Swapchain, SwapchainAcquireFuture, SwapchainCreateInfo, SwapchainPresentInfo};
 use vulkano::sync::GpuFuture;
 use vulkano::{Validated, ValidationError, VulkanError};
+use crate::renderer::player_viewport::PlayerViewport;
 
 pub(crate) static OFFLINE_PIPELINE_COLOR_FORMAT: Format = Format::R8G8B8A8_UNORM;
 
@@ -248,7 +249,8 @@ impl VulkanRenderer {
             .current_bsp
             .as_ref()
             .and_then(|f| renderer.bsps.get(f))
-            .expect("no BSP loaded");
+            .expect("no BSP loaded")
+            .clone();
 
         let mut command_builder = AutoCommandBufferBuilder::primary(
             &renderer.renderer.command_buffer_allocator,
@@ -356,9 +358,7 @@ impl VulkanRenderer {
                 .map(|g| (g, &renderer.shaders.get(&g.vulkan.shader).expect("no shader?").vulkan.pipeline_data));
 
             let opaque = geo_shader_iterator.clone().filter(|s| !s.1.is_transparent());
-
-            #[allow(unused_variables)]
-            let non_opaque = geo_shader_iterator.clone().filter(|s| s.1.is_transparent());
+            let transparent = geo_shader_iterator.clone().filter(|s| s.1.is_transparent());
 
             upload_main_material_uniform(renderer, i.camera.position.into(), Vec3::default(), Mat3::IDENTITY, view, proj, &mut command_builder);
             command_builder.set_cull_mode(CullMode::Back).unwrap();
@@ -366,40 +366,10 @@ impl VulkanRenderer {
             // Draw non-transparent shaders first
             let mut last_shader = None;
             for (geometry, shader) in opaque {
-                let this_shader = &geometry.vulkan.shader;
-                let repeat_shader = if last_shader != Some(this_shader) {
-                    last_shader = Some(this_shader);
-                    false
-                }
-                else {
-                    true
-                };
-
-                let mut desired_lightmap = geometry.lightmap_index;
-                if !i.camera.lightmaps {
-                    desired_lightmap = None;
-                }
-
-                upload_lightmap_descriptor_set(renderer, desired_lightmap, &currently_loaded_bsp, &mut command_builder);
-
-                let index_buffer = geometry.vulkan.index_buffer.clone();
-                let index_count = index_buffer.len() as usize;
-                command_builder.bind_index_buffer(index_buffer).expect("can't bind indices");
-
-                command_builder.bind_vertex_buffers(0, (
-                    geometry.vulkan.vertex_buffer.clone(),
-                    geometry.vulkan.texture_coords_buffer.clone(),
-                    if geometry.vulkan.lightmap_texture_coords_buffer.is_none() {
-                        geometry.vulkan.texture_coords_buffer.clone()
-                    }
-                    else {
-                        geometry.vulkan.lightmap_texture_coords_buffer.clone().unwrap()
-                    }
-                )).unwrap();
-
-                shader
-                    .generate_commands(renderer, index_count as u32, repeat_shader, &mut command_builder)
-                    .expect("can't generate stage commands");
+                Self::draw_bsp_geometry(renderer, currently_loaded_bsp.as_ref(), &mut command_builder, i, &mut last_shader, geometry, shader);
+            }
+            for (geometry, shader) in transparent {
+                Self::draw_bsp_geometry(renderer, currently_loaded_bsp.as_ref(), &mut command_builder, i, &mut last_shader, geometry, shader);
             }
         }
 
@@ -460,7 +430,50 @@ impl VulkanRenderer {
         true
     }
 
-    fn draw_split_screen_bars(renderer: &mut Renderer, command_builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>, width: f32, height: f32) {
+    fn draw_bsp_geometry<'a, 'b>(
+        renderer: &Renderer,
+        currently_loaded_bsp: &'a BSP,
+        mut command_builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
+        i: &PlayerViewport,
+        last_shader: &'b mut Option<&'a Arc<String>>,
+        geometry: &'a BSPGeometry,
+        shader: &Arc<dyn VulkanMaterial>
+    ) {
+        let this_shader = &geometry.vulkan.shader;
+        let repeat_shader = if *last_shader != Some(this_shader) {
+            *last_shader = Some(this_shader);
+            false
+        } else {
+            true
+        };
+
+        let mut desired_lightmap = geometry.lightmap_index;
+        if !i.camera.lightmaps {
+            desired_lightmap = None;
+        }
+
+        upload_lightmap_descriptor_set(renderer, desired_lightmap, &currently_loaded_bsp, &mut command_builder);
+
+        let index_buffer = geometry.vulkan.index_buffer.clone();
+        let index_count = index_buffer.len() as usize;
+        command_builder.bind_index_buffer(index_buffer).expect("can't bind indices");
+
+        command_builder.bind_vertex_buffers(0, (
+            geometry.vulkan.vertex_buffer.clone(),
+            geometry.vulkan.texture_coords_buffer.clone(),
+            if geometry.vulkan.lightmap_texture_coords_buffer.is_none() {
+                geometry.vulkan.texture_coords_buffer.clone()
+            } else {
+                geometry.vulkan.lightmap_texture_coords_buffer.clone().unwrap()
+            }
+        )).unwrap();
+
+        shader
+            .generate_commands(renderer, index_count as u32, repeat_shader, &mut command_builder)
+            .expect("can't generate stage commands");
+    }
+
+    fn draw_split_screen_bars(renderer: &Renderer, command_builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>, width: f32, height: f32) {
         if renderer.player_viewports.len() <= 1 {
             return;
         }

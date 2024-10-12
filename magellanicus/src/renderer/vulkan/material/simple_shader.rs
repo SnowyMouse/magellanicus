@@ -81,4 +81,8 @@ impl VulkanMaterial for VulkanSimpleShaderMaterial {
         to.draw_indexed(index_count, 1, 0, 0, 0)?;
         Ok(())
     }
+
+    fn is_transparent(&self) -> bool {
+        true
+    }
 }
