@@ -710,6 +710,7 @@ impl FlycamTestHandler {
                 AddShaderParameter {
                     data: AddShaderData::ShaderEnvironment(AddShaderEnvironmentShaderData {
                         alpha_tested: tag.properties.flags.alpha_tested,
+                        bump_map_is_specular_mask: tag.properties.flags.bump_map_is_specular_mask,
                         base_map: tag.diffuse.base_map.path().map(|p| p.to_string()),
                         primary_detail_map: tag.diffuse.primary_detail_map.path().map(|p| p.to_string()),
                         secondary_detail_map: tag.diffuse.secondary_detail_map.path().map(|p| p.to_string()),

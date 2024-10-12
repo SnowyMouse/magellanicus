@@ -69,6 +69,7 @@ pub enum ShaderReflectionType {
 #[derive(Clone)]
 pub struct AddShaderEnvironmentShaderData {
     pub alpha_tested: bool,
+    pub bump_map_is_specular_mask: bool,
 
     pub shader_environment_type: ShaderEnvironmentType,
     pub base_map: Option<String>,

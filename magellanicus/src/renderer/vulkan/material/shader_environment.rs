@@ -76,7 +76,12 @@ impl VulkanShaderEnvironmentMaterial {
             secondary_detail_map_scale: add_shader_parameter.secondary_detail_map_scale,
             bump_map_scale: add_shader_parameter.bump_map_scale,
             micro_detail_map_scale: add_shader_parameter.micro_detail_map_scale,
-            flags: add_shader_parameter.alpha_tested as u32,
+            flags: {
+                let mut flags = 0;
+                flags |= (add_shader_parameter.alpha_tested as u32) << 0;
+                flags |= (add_shader_parameter.bump_map_is_specular_mask as u32) << 1;
+                flags
+            },
             shader_environment_type: add_shader_parameter.shader_environment_type as u32,
             detail_map_function: add_shader_parameter.detail_map_function as u32,
             micro_detail_map_function: add_shader_parameter.micro_detail_map_function as u32,

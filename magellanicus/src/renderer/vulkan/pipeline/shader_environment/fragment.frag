@@ -14,6 +14,10 @@ layout(location = 1) in vec2 lightmap_texture_coordinates;
 layout(location = 2) in vec3 camera_position;
 layout(location = 3) in vec3 vertex_position;
 
+layout(location = 4) in vec3 normal;
+layout(location = 5) in vec3 binormal;
+layout(location = 6) in vec3 tangent;
+
 layout(set = 3, binding = 1) uniform sampler map_sampler;
 layout(set = 3, binding = 2) uniform texture2D base_map;
 layout(set = 3, binding = 3) uniform texture2D primary_detail_map;
@@ -21,6 +25,10 @@ layout(set = 3, binding = 4) uniform texture2D secondary_detail_map;
 layout(set = 3, binding = 5) uniform texture2D micro_detail_map;
 layout(set = 3, binding = 6) uniform texture2D bump_map;
 layout(set = 3, binding = 7) uniform textureCube cubemap;
+
+vec3 calculate_world_tangent(vec3 base) {
+    return base.xxx * tangent + base.yyy * binormal + base.zzz * normal;
+}
 
 vec3 blend_with_mix_type(vec3 color, vec3 with, uint blend_type) {
     switch(blend_type) {
@@ -36,6 +44,7 @@ vec3 blend_with_mix_type(vec3 color, vec3 with, uint blend_type) {
 }
 
 void main() {
+    vec3 camera_difference = camera_position - vertex_position;
     float distance_from_camera = distance(camera_position, vertex_position);
 
     vec4 base_map_color = texture(sampler2D(base_map, map_sampler), base_map_texture_coordinates);
@@ -46,7 +55,7 @@ void main() {
     );
 
     // Alpha testing
-    if((shader_environment_data.flags & 1) == 1) {
+    if((shader_environment_data.flags & SHADER_ENVIRONMENT_FLAGS_ALPHA_TEST) == 1) {
         // TODO: Is it just normal that discards 0-alpha pixels? The alpha is used for blending and specular on other
         // types, so it makes no sense to test alpha on those types.
         if(shader_environment_data.shader_environment_type == SHADER_ENVIRONMENT_TYPE_NORMAL && base_map_color.a == 0.0) {
@@ -81,6 +90,26 @@ void main() {
         lightmap_texture_coordinates
     );
 
+    // Specular
+    vec3 camera_normal = normalize(camera_difference);
+    float normal_on_camera = dot(normal, camera_normal);
+    vec3 reflection_tangent = calculate_world_tangent(bump_vector);
+    vec3 reflection_normal = normalize(2.0 * normal_on_camera * normal - camera_normal);
+    vec3 reflection_color = texture(samplerCube(cubemap, map_sampler), reflection_normal).xyz;
+    vec3 specular_color = pow(reflection_color, vec3(8.0));
+    float diffuse_reflection = normal_on_camera * normal_on_camera;
+    float reflect_attenuation = mix(shader_environment_data.parallel_color.a, shader_environment_data.perpendicular_color.a, diffuse_reflection);
+    vec3 reflection_add = mix(shader_environment_data.parallel_color.rgb, shader_environment_data.perpendicular_color.rgb, diffuse_reflection);
+    reflection_add = mix(specular_color, reflection_color, reflection_add);
+    reflection_add *= reflect_attenuation;
+
+    if((shader_environment_data.flags & SHADER_ENVIRONMENT_FLAGS_BUMPMAP_ALPHA_SPECULAR_MASK) == 0) {
+        reflection_add *= base_map_color.a;
+    }
+    else {
+        reflection_add *= bump_color.a;
+    }
+
     float primary_blending = primary_detail_map_color.a;
     float secondary_blending = secondary_detail_map_color.a;
 
@@ -102,11 +131,11 @@ void main() {
     scratch_color = blend_with_mix_type(base_map_color.rgb, scratch_color, shader_environment_data.detail_map_function);
     scratch_color = blend_with_mix_type(micro_detail_map_color.rgb, scratch_color, shader_environment_data.micro_detail_map_function);
 
-    // TODO
-    vec3 cubemap_color = texture(samplerCube(cubemap, map_sampler), normalize(bump_vector)).xyz;
-
     // Lightmap stage
     scratch_color = scratch_color.rgb * lightmap_color.rgb;
+
+    // Specular
+    scratch_color.rgb = clamp(scratch_color.rgb + reflection_add.rgb, vec3(0.0), vec3(1.0));
 
     // Bumpmap memes
     float base_shading = dot(bump_vector, vec3(0.0, 0.0, 1.0));
