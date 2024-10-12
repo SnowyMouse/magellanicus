@@ -90,58 +90,61 @@ void main() {
         lightmap_texture_coordinates
     );
 
-    // Specular
-    vec3 camera_normal = normalize(camera_difference);
-    float normal_on_camera = dot(normal, camera_normal);
-    vec3 reflection_tangent = calculate_world_tangent(bump_vector);
-    vec3 reflection_normal = normalize(2.0 * normal_on_camera * normal - camera_normal);
-    vec3 reflection_color = texture(samplerCube(cubemap, map_sampler), reflection_normal).xyz;
-    vec3 specular_color = pow(reflection_color, vec3(8.0));
-    float diffuse_reflection = normal_on_camera * normal_on_camera;
-    float reflect_attenuation = mix(shader_environment_data.parallel_color.a, shader_environment_data.perpendicular_color.a, diffuse_reflection);
-    vec3 reflection_add = mix(shader_environment_data.parallel_color.rgb, shader_environment_data.perpendicular_color.rgb, diffuse_reflection);
-    reflection_add = mix(specular_color, reflection_color, reflection_add);
-    reflection_add *= reflect_attenuation;
-
-    if((shader_environment_data.flags & SHADER_ENVIRONMENT_FLAGS_BUMPMAP_ALPHA_SPECULAR_MASK) == 0) {
-        reflection_add *= base_map_color.a;
-    }
-    else {
-        reflection_add *= bump_color.a;
-    }
-
-    float primary_blending = primary_detail_map_color.a;
-    float secondary_blending = secondary_detail_map_color.a;
-
-    vec3 scratch_color;
-
+    vec4 blended_detail;
     switch(shader_environment_data.shader_environment_type) {
+        case SHADER_ENVIRONMENT_TYPE_NORMAL:
+            blended_detail = mix(secondary_detail_map_color, primary_detail_map_color, secondary_detail_map_color.a);
+            break;
         case SHADER_ENVIRONMENT_TYPE_BLENDED:
         case SHADER_ENVIRONMENT_TYPE_BLENDED_BASE_SPECULAR:
-            scratch_color = mix(secondary_detail_map_color.rgb, primary_detail_map_color.rgb, base_map_color.a);
-            break;
-        case SHADER_ENVIRONMENT_TYPE_NORMAL:
-            scratch_color = mix(secondary_detail_map_color.rgb, primary_detail_map_color.rgb, secondary_detail_map_color.a);
+            blended_detail = mix(secondary_detail_map_color, primary_detail_map_color, base_map_color.a);
             break;
         default:
             f_color = vec4(1.0);
             return;
     }
 
+    // Specular
+    vec3 camera_normal = normalize(camera_difference);
+    float normal_on_camera = dot(normal, camera_normal);
+    vec3 reflection_tangent = calculate_world_tangent(vec3(0.0, 0.0, 1.0));
+    vec3 reflection_normal = normalize(2.0 * normal_on_camera * normal - camera_normal);
+    vec3 reflection_color = texture(samplerCube(cubemap, map_sampler), reflection_normal + vec3(bump_vector.xy, 0.0)).xyz;
+    vec3 specular_color = pow(reflection_color, vec3(8.0));
+    float diffuse_reflection = normal_on_camera * normal_on_camera;
+    float reflect_attenuation = mix(shader_environment_data.parallel_color.a, shader_environment_data.perpendicular_color.a, diffuse_reflection);
+    vec3 specular = mix(shader_environment_data.parallel_color.rgb, shader_environment_data.perpendicular_color.rgb, diffuse_reflection);
+    specular = mix(specular_color, reflection_color, specular);
+    specular *= reflect_attenuation;
+
+    float specular_mask;
+    if((shader_environment_data.flags & SHADER_ENVIRONMENT_FLAGS_BUMPMAP_ALPHA_SPECULAR_MASK) != 0) {
+        specular_mask = bump_color.a;
+    }
+    else if(shader_environment_data.shader_environment_type == SHADER_ENVIRONMENT_TYPE_BLENDED_BASE_SPECULAR) {
+        specular_mask = blended_detail.a;
+    }
+    else {
+        specular_mask = base_map_color.a;
+    }
+    specular *= specular_mask;
+
+    // Specular
+    base_map_color.rgb = clamp(base_map_color.rgb + specular.rgb, vec3(0.0), vec3(1.0));
+
+    // Lightmap stage
+    base_map_color.rgb *= lightmap_color.rgb;
+
+    // Detail
+    vec3 scratch_color = blended_detail.rgb;
     scratch_color = blend_with_mix_type(base_map_color.rgb, scratch_color, shader_environment_data.detail_map_function);
     scratch_color = blend_with_mix_type(micro_detail_map_color.rgb, scratch_color, shader_environment_data.micro_detail_map_function);
 
-    // Lightmap stage
-    scratch_color = scratch_color.rgb * lightmap_color.rgb;
-
-    // Specular
-    scratch_color.rgb = clamp(scratch_color.rgb + reflection_add.rgb, vec3(0.0), vec3(1.0));
-
-    // Bumpmap memes
+    // Bumpmap
     float base_shading = dot(bump_vector, vec3(0.0, 0.0, 1.0));
     scratch_color.rgb *= vec3(base_shading);
 
-    // Fog stage (TODO: REFACTOR)
+    // Fog stage
     scratch_color.rgb = apply_fog(distance_from_camera, scratch_color.rgb);
 
     f_color = vec4(scratch_color, 1.0);
