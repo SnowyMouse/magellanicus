@@ -31,7 +31,7 @@ pub struct SimpleTextureShader {
 impl SimpleTextureShader {
     pub fn new(device: Arc<Device>, samples: SampleCount) -> MResult<Self> {
         let pipeline = load_pipeline(device, vertex::load, fragment::load, &PipelineSettings {
-            depth_access: DepthAccess::DepthWrite,
+            depth_access: DepthAccess::DepthReadOnlyTransparent,
             vertex_buffer_descriptions: vec![
                 VulkanModelVertex::per_vertex(),
                 VulkanModelVertexTextureCoords::per_vertex(),
