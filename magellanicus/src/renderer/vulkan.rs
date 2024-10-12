@@ -28,7 +28,7 @@ use std::fmt::Display;
 use std::sync::Arc;
 use std::time::Duration;
 use std::vec::Vec;
-use std::{eprintln, format, vec};
+use std::{eprintln, format, println, vec};
 use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage};
 use vulkano::command_buffer::allocator::{StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, BlitImageInfo, CommandBufferInheritanceInfo, CommandBufferInheritanceRenderPassType, CommandBufferInheritanceRenderingInfo, CommandBufferUsage, PrimaryAutoCommandBuffer, PrimaryCommandBufferAbstract, RenderingAttachmentInfo, RenderingInfo, ResolveImageInfo, SecondaryAutoCommandBuffer};
@@ -257,7 +257,7 @@ impl VulkanRenderer {
         ).expect("failed to init command builder");
 
         let images = renderer.renderer.swapchain_image_views[image_index as usize].clone();
-        let _ = image_future.wait(Some(Duration::from_millis(5000))).expect("waited too long");
+        image_future.wait(Some(Duration::from_millis(5000))).expect("waited too long");
         renderer.renderer.future.as_mut().unwrap().cleanup_finished();
 
         // Clear this real quick
@@ -428,24 +428,36 @@ impl VulkanRenderer {
 
         let swapchain_present = SwapchainPresentInfo::swapchain_image_index(renderer.renderer.swapchain.clone(), image_index);
 
-        match future
+        let future = future
             .join(image_future)
-            .then_execute(renderer.renderer.queue.clone(), commands)
+            .then_execute(renderer.renderer.queue.clone(), commands.clone())
             .expect("can't execute commands")
             .then_swapchain_present(renderer.renderer.queue.clone(), swapchain_present)
-            .then_signal_fence_and_flush() {
-            Ok(n) => {
-                renderer.renderer.future = Some(n.boxed_send_sync());
-                true
-            }
-            Err(Validated::Error(VulkanError::OutOfDate)) => {
-                renderer.renderer.future = Some(vulkano::sync::now(renderer.renderer.device.clone()).boxed_send_sync());
-                false
-            }
-            Err(e) => {
-                panic!("Oh, shit! Some bullshit just happened: {e}")
+            .then_signal_fence();
+
+        loop {
+            match future.flush() {
+                Ok(()) => break,
+                #[cfg(target_os = "macos")]
+                Err(Validated::ValidationError(v)) if v.problem.starts_with("access to a resource has been denied") => {
+                    // Workaround for macOS.
+                    //
+                    // Sometimes even though we called cleanup_finished() and waited for the swapchain image, the images
+                    // are still considered in use when they clearly shouldn't be.
+                    continue;
+                },
+                Err(Validated::Error(VulkanError::OutOfDate)) => {
+                    renderer.renderer.future = Some(vulkano::sync::now(renderer.renderer.device.clone()).boxed_send_sync());
+                    return false
+                },
+                Err(e) => {
+                    panic!("Oh, shit! Some bullshit just happened: {e:?}")
+                }
             }
         }
+
+        renderer.renderer.future = Some(future.boxed_send_sync());
+        true
     }
 
     fn draw_split_screen_bars(renderer: &mut Renderer, command_builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>, width: f32, height: f32) {
