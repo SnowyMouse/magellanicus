@@ -87,7 +87,12 @@ pub struct AddShaderEnvironmentShaderData {
     pub bump_map_scale: f32,
 
     pub reflection_cube_map: Option<String>,
-    pub reflection_type: ShaderReflectionType
+    pub reflection_type: ShaderReflectionType,
+
+    pub perpendicular_color: [f32; 3],
+    pub perpendicular_brightness: f32,
+    pub parallel_color: [f32; 3],
+    pub parallel_brightness: f32,
 }
 impl AddShaderEnvironmentShaderData {
     pub(crate) fn validate(&self, renderer: &Renderer) -> MResult<()> {

@@ -80,6 +80,8 @@ impl VulkanShaderEnvironmentMaterial {
             shader_environment_type: add_shader_parameter.shader_environment_type as u32,
             detail_map_function: add_shader_parameter.detail_map_function as u32,
             micro_detail_map_function: add_shader_parameter.micro_detail_map_function as u32,
+            parallel_color: [add_shader_parameter.parallel_color[0], add_shader_parameter.parallel_color[1], add_shader_parameter.parallel_color[2], add_shader_parameter.parallel_brightness],
+            perpendicular_color: [add_shader_parameter.perpendicular_color[0], add_shader_parameter.perpendicular_color[1], add_shader_parameter.perpendicular_color[2], add_shader_parameter.perpendicular_brightness],
         };
 
         let map_sampler = renderer.renderer.default_2d_sampler.clone();
@@ -114,6 +116,7 @@ impl VulkanShaderEnvironmentMaterial {
                 WriteDescriptorSet::image_view(4, secondary_detail_map.clone()),
                 WriteDescriptorSet::image_view(5, micro_detail_map.clone()),
                 WriteDescriptorSet::image_view(6, bump_map.clone()),
+                WriteDescriptorSet::image_view(7, cubemap.clone()),
             ],
             []
         )?;

@@ -11,7 +11,8 @@ layout(location = 0) out vec4 f_color;
 
 layout(location = 0) in vec2 base_map_texture_coordinates;
 layout(location = 1) in vec2 lightmap_texture_coordinates;
-layout(location = 2) in float distance_from_camera;
+layout(location = 2) in vec3 camera_position;
+layout(location = 3) in vec3 vertex_position;
 
 layout(set = 3, binding = 1) uniform sampler map_sampler;
 layout(set = 3, binding = 2) uniform texture2D base_map;
@@ -19,6 +20,7 @@ layout(set = 3, binding = 3) uniform texture2D primary_detail_map;
 layout(set = 3, binding = 4) uniform texture2D secondary_detail_map;
 layout(set = 3, binding = 5) uniform texture2D micro_detail_map;
 layout(set = 3, binding = 6) uniform texture2D bump_map;
+layout(set = 3, binding = 7) uniform textureCube cubemap;
 
 vec3 blend_with_mix_type(vec3 color, vec3 with, uint blend_type) {
     switch(blend_type) {
@@ -34,6 +36,8 @@ vec3 blend_with_mix_type(vec3 color, vec3 with, uint blend_type) {
 }
 
 void main() {
+    float distance_from_camera = distance(camera_position, vertex_position);
+
     vec4 base_map_color = texture(sampler2D(base_map, map_sampler), base_map_texture_coordinates);
 
     vec4 bump_color = texture(
@@ -54,6 +58,8 @@ void main() {
         }
     }
     bump_color.a = 1.0;
+
+    vec3 bump_vector = bump_color.rgb * 2.0 - 1.0;
 
     vec4 primary_detail_map_color = texture(
         sampler2D(primary_detail_map, map_sampler),
@@ -96,18 +102,18 @@ void main() {
     scratch_color = blend_with_mix_type(base_map_color.rgb, scratch_color, shader_environment_data.detail_map_function);
     scratch_color = blend_with_mix_type(micro_detail_map_color.rgb, scratch_color, shader_environment_data.micro_detail_map_function);
 
-    vec3 bump_vector = bump_color.rgb * vec3(2.0) - vec3(1.0);
-
-    float base_shading = dot(bump_vector, normalize(vec3(0.0, 0.0, 1.0)));
+    // TODO
+    vec3 cubemap_color = texture(samplerCube(cubemap, map_sampler), normalize(bump_vector)).xyz;
 
     // Lightmap stage
     scratch_color = scratch_color.rgb * lightmap_color.rgb;
+
+    // Bumpmap memes
+    float base_shading = dot(bump_vector, vec3(0.0, 0.0, 1.0));
     scratch_color.rgb *= vec3(base_shading);
 
-    // Fog stage
-    float clamped = clamp(distance_from_camera, sky_fog_data.sky_fog_from, sky_fog_data.sky_fog_to);
-    float fog_density = (clamped - sky_fog_data.sky_fog_from) / (sky_fog_data.sky_fog_to - sky_fog_data.sky_fog_from) * sky_fog_data.max_opacity;
-    scratch_color = mix(scratch_color.rgb, sky_fog_data.sky_fog_color.rgb, fog_density);
+    // Fog stage (TODO: REFACTOR)
+    scratch_color.rgb = apply_fog(distance_from_camera, scratch_color.rgb);
 
     f_color = vec4(scratch_color, 1.0);
 }

@@ -720,6 +720,18 @@ impl FlycamTestHandler {
                         secondary_detail_map_scale: tag.diffuse.secondary_detail_map_scale as f32,
                         micro_detail_map_scale: tag.diffuse.micro_detail_map_scale as f32,
                         bump_map_scale: tag.bump.bump_map_scale as f32,
+                        parallel_color: [
+                            tag.specular.parallel_color.red as f32,
+                            tag.specular.parallel_color.green as f32,
+                            tag.specular.parallel_color.blue as f32,
+                        ],
+                        perpendicular_color: [
+                            tag.specular.perpendicular_color.red as f32,
+                            tag.specular.perpendicular_color.green as f32,
+                            tag.specular.perpendicular_color.blue as f32,
+                        ],
+                        parallel_brightness: tag.reflection.parallel_brightness as f32,
+                        perpendicular_brightness: tag.reflection.perpendicular_brightness as f32,
 
                         // SAFETY: 🔥🐶🔥 This is fine 🔥🐶🔥
                         shader_environment_type: unsafe { transmute(tag.properties.shader_environment_type as u32) },

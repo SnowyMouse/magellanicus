@@ -1,5 +1,5 @@
 use crate::error::{Error, MResult};
-use crate::renderer::mipmap_iterator::{MipmapTextureIterator, MipmapType};
+use crate::renderer::mipmap_iterator::{MipmapFaceIterator, MipmapMetadata, MipmapTextureIterator, MipmapType};
 use crate::renderer::vulkan::{default_allocation_create_info, VulkanRenderer};
 use crate::renderer::{decode_p8_to_a8r8g8b8le, AddBitmapBitmapParameter, BitmapFormat, BitmapType};
 use std::num::NonZeroUsize;
@@ -144,30 +144,66 @@ impl VulkanBitmapData {
             CommandBufferUsage::OneTimeSubmit,
         )?;
 
-        let iterator = MipmapTextureIterator::new(
-            NonZeroUsize::new(parameter.resolution.width as usize).unwrap(),
-            NonZeroUsize::new(parameter.resolution.height as usize).unwrap(),
-            match parameter.bitmap_type {
-                BitmapType::Cubemap => MipmapType::Cubemap,
-                BitmapType::Dim2D => MipmapType::TwoDimensional,
-                BitmapType::Dim3D { depth } => MipmapType::ThreeDimensional(NonZeroUsize::new(depth as usize).unwrap())
-            },
-            NonZeroUsize::new(bitmap_format.block_pixel_length()).unwrap(),
-            Some(parameter.mipmap_count as usize),
+        let width_nzus = NonZeroUsize::new(parameter.resolution.width as usize).unwrap();
+        let height_nzus = NonZeroUsize::new(parameter.resolution.height as usize).unwrap();
+        let bitmap_type = match parameter.bitmap_type {
+            BitmapType::Cubemap => MipmapType::Cubemap,
+            BitmapType::Dim2D => MipmapType::TwoDimensional,
+            BitmapType::Dim3D { depth } => MipmapType::ThreeDimensional(NonZeroUsize::new(depth as usize).unwrap())
+        };
+        let block_pixel_length_nzus = NonZeroUsize::new(bitmap_format.block_pixel_length()).unwrap();
+        let mipmap_count = Some(parameter.mipmap_count as usize);
+
+        let mut mipmap_face_iterator = MipmapFaceIterator::new(
+            width_nzus,
+            height_nzus,
+            bitmap_type,
+            block_pixel_length_nzus,
+            mipmap_count,
         );
+
+        let mut mipmap_texture_iterator = MipmapTextureIterator::new(
+            width_nzus,
+            height_nzus,
+            bitmap_type,
+            block_pixel_length_nzus,
+            mipmap_count,
+        );
+
+        let iterator_to_use: &mut dyn Iterator<Item = MipmapMetadata> = if parameter.bitmap_type != BitmapType::Cubemap {
+            &mut mipmap_texture_iterator
+        }
+        else {
+            &mut mipmap_face_iterator
+        };
 
         let mut offset = 0;
         let block_size = bitmap_format.block_byte_size();
         let pixel_size = bitmap_format.block_pixel_length();
-        for i in iterator {
+        for i in iterator_to_use {
             let size = block_size * i.block_count;
+            let actual_face_index = if parameter.bitmap_type != BitmapType::Cubemap {
+                0
+            }
+            else {
+                // TODO: IS THIS RIGHT?????? I THINK IT IS BUT IDK :(
+                match i.face_index {
+                    0 => 0,
+                    1 => 2,
+                    2 => 1,
+                    3 => 3,
+                    4 => 4,
+                    5 => 5,
+                    _ => continue
+                }
+            };
             command_buffer_builder.copy_buffer_to_image(CopyBufferToImageInfo {
                 regions: [
                     BufferImageCopy {
                         image_subresource: ImageSubresourceLayers {
                             aspects: ImageAspects::COLOR,
                             mip_level: i.mipmap_index as u32,
-                            array_layers: i.face_index as u32..(i.face_index as u32 + 1)
+                            array_layers: actual_face_index..(actual_face_index + 1)
                         },
                         buffer_offset: offset,
                         buffer_image_height: (i.block_height * pixel_size) as u32,

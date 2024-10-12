@@ -8,6 +8,9 @@ layout(set = 3, binding = 0) uniform ShaderEnvironmentData {
     uint shader_environment_type;
     uint detail_map_function;
     uint micro_detail_map_function;
+
+    vec4 parallel_color; // a = brightness
+    vec4 perpendicular_color; // a = brightness
 } shader_environment_data;
 
 #define SHADER_ENVIRONMENT_TYPE_NORMAL 0
