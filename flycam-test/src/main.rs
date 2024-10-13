@@ -6,7 +6,7 @@ use std::mem::transmute;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
-use std::sync::mpsc::{channel, Receiver};
+use std::sync::mpsc::{channel, Receiver, Sender};
 use std::time::Instant;
 
 use clap::Parser;
@@ -241,8 +241,9 @@ fn main() -> Result<(), String> {
         pause_rendering_flag: Arc::new(AtomicBool::new(false)),
     };
 
+    let (fps_send, fps_receive) = channel::<f64>();
     let (camera_send, camera_receive) = channel::<(f32, f32, usize)>();
-    handler.initialize_and_start(camera_receive)?;
+    handler.initialize_and_start(camera_receive, fps_send)?;
 
     window.show();
     mouse.capture(true);
@@ -272,7 +273,13 @@ fn main() -> Result<(), String> {
     }
 
     loop {
-        match events.wait_event() {
+        if let Ok(frames_per_second) = fps_receive.try_recv() {
+            println!("FPS: {frames_per_second}");
+        }
+        let Some(event) = events.wait_event_timeout(1000) else {
+            continue;
+        };
+        match event {
             Event::Quit { .. } => {
                 println!("EXITING!");
                 break;
@@ -517,7 +524,7 @@ impl FlycamTestHandler {
         }
     }
 
-    fn initialize_and_start(&mut self, camera_rotation_channel: Receiver<(f32, f32, usize)>) -> Result<(), String> {
+    fn initialize_and_start(&mut self, camera_rotation_channel: Receiver<(f32, f32, usize)>, fps_channel: Sender<f64>) -> Result<(), String> {
         if let Err(e) = self.load_bitmaps() {
             return Err(format!("ERROR LOADING BITMAPS: {e}"))
         }
@@ -571,7 +578,7 @@ impl FlycamTestHandler {
         let pause_rendering_ref = self.pause_rendering_flag.clone();
         let velocity = self.camera_velocity.clone();
         std::thread::spawn(move || {
-            run_renderer_thread(render_ref, pause_rendering_ref, velocity, camera_rotation_channel);
+            run_renderer_thread(render_ref, pause_rendering_ref, velocity, camera_rotation_channel, fps_channel);
         });
 
         Ok(())
@@ -1006,7 +1013,7 @@ impl FlycamTestHandler {
     }
 }
 
-fn run_renderer_thread(renderer: Weak<Mutex<Renderer>>, pause_rendering: Arc<AtomicBool>, velocity: Arc<[[AtomicU32; 4]; 4]>, camera_channel: Receiver<(f32, f32, usize)>) {
+fn run_renderer_thread(renderer: Weak<Mutex<Renderer>>, pause_rendering: Arc<AtomicBool>, velocity: Arc<[[AtomicU32; 4]; 4]>, camera_channel: Receiver<(f32, f32, usize)>, fps_channel: Sender<f64>) {
     let time_start = Instant::now();
     let mut last_loop = 0.0;
     let mut time_since_last_fps = Instant::now();
@@ -1072,7 +1079,7 @@ fn run_renderer_thread(renderer: Weak<Mutex<Renderer>>, pause_rendering: Arc<Ato
         let time_taken = Instant::now() - time_since_last_fps;
         if time_taken.as_secs() >= 1 {
             let frames_per_second = (frames_rendered as f64) / (time_taken.as_micros() as f64 / 1000000.0);
-            println!("FPS: {frames_per_second}");
+            let _ = fps_channel.send(frames_per_second);
             frames_rendered = 0;
             time_since_last_fps = Instant::now();
         }
