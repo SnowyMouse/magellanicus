@@ -253,6 +253,7 @@ fn main() -> Result<(), String> {
     let mut a = false;
     let mut s = false;
     let mut d = false;
+    let mut v = false;
     let mut space = false;
     let mut ctrl = false;
     let mut shift = false;
@@ -381,6 +382,7 @@ fn main() -> Result<(), String> {
                 a |= keycode == Some(Keycode::A);
                 s |= keycode == Some(Keycode::S);
                 d |= keycode == Some(Keycode::D);
+                v |= keycode == Some(Keycode::V);
                 ctrl |= keycode == Some(Keycode::LCtrl);
                 space |= keycode == Some(Keycode::Space);
                 shift |= keycode == Some(Keycode::LShift);
@@ -404,6 +406,7 @@ fn main() -> Result<(), String> {
                 a &= keycode != Some(Keycode::A);
                 s &= keycode != Some(Keycode::S);
                 d &= keycode != Some(Keycode::D);
+                v &= keycode != Some(Keycode::V);
                 ctrl &= keycode != Some(Keycode::LCtrl);
                 space &= keycode != Some(Keycode::Space);
                 shift &= keycode != Some(Keycode::LShift);
@@ -419,14 +422,28 @@ fn main() -> Result<(), String> {
                 }
             }
             Event::MouseWheel { x, y, .. } => {
-                let mut multiplier = f32::from_bits(handler.camera_velocity[viewport_mod][3].load(Ordering::Relaxed));
-
                 let incrementor = if x.abs() > y.abs() {
                     x
                 }
                 else {
                     y
                 };
+
+                if v {
+                    let mut lock = handler.lock_renderer();
+                    let mut camera = lock.renderer.get_camera_for_viewport(viewport_mod);
+
+                    let new_fov_deg = (camera.fov.to_degrees() + incrementor as f32 * 1.0)
+                        .round()
+                        .clamp(1.0, 179.0);
+                    camera.fov = new_fov_deg.to_radians();
+                    println!("Setting camera #{viewport_mod}'s vertical FoV to {new_fov_deg:.04} ({}%) degrees", new_fov_deg / 56.0 * 100.0);
+
+                    lock.renderer.set_camera_for_viewport(viewport_mod, camera);
+                    continue
+                }
+
+                let mut multiplier = f32::from_bits(handler.camera_velocity[viewport_mod][3].load(Ordering::Relaxed));
 
                 multiplier += (incrementor as f32) * if shift { 4.0 } else { 1.0 } * 0.125;
                 handler.camera_velocity[viewport_mod][3].swap(multiplier.max(1.0).to_bits(), Ordering::Relaxed);
