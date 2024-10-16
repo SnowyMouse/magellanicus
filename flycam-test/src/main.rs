@@ -479,6 +479,7 @@ fn load_tags_from_dir(tags: &Vec<String>, scenario_path: &TagPath, engine: Optio
             .lock()
             .unwrap();
         let tag = &mut *tag;
+        tag.set_defaults();
         let mut replacement: Box<dyn PrimaryTagStructDyn> = Box::new(UnicodeStringList::default());
         std::mem::swap(tag, &mut replacement);
         dependencies.insert(i, replacement);
