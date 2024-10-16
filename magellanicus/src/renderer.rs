@@ -378,3 +378,6 @@ enum DefaultType {
     /// This provides a neutral vector map.
     Vector
 }
+
+/// Describes the default background color and clear color.
+const DEFAULT_BACKGROUND: [f32; 4] = [0.0f32, 0.0, 0.0, 1.0];

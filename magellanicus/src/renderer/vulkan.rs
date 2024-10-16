@@ -14,7 +14,7 @@ use crate::error::{Error, MResult};
 use crate::renderer::data::{BSPGeometry, BSP};
 use crate::renderer::vulkan::helper::{build_swapchain, LoadedVulkan};
 use crate::renderer::vulkan::vertex::{VulkanFogData, VulkanModelData, VulkanModelVertex};
-use crate::renderer::{Renderer, RendererParameters, Resolution, MSAA};
+use crate::renderer::{Camera, Renderer, RendererParameters, Resolution, MSAA};
 pub use bitmap::*;
 pub use bsp::*;
 pub use geometry::*;
@@ -31,11 +31,11 @@ use std::vec::Vec;
 use std::{eprintln, format, vec};
 use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage};
 use vulkano::command_buffer::allocator::{StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo};
-use vulkano::command_buffer::{AutoCommandBufferBuilder, BlitImageInfo, CommandBufferInheritanceInfo, CommandBufferInheritanceRenderPassType, CommandBufferInheritanceRenderingInfo, CommandBufferUsage, PrimaryAutoCommandBuffer, PrimaryCommandBufferAbstract, RenderingAttachmentInfo, RenderingInfo, ResolveImageInfo, SecondaryAutoCommandBuffer};
+use vulkano::command_buffer::{AutoCommandBufferBuilder, BlitImageInfo, ClearDepthStencilImageInfo, CommandBufferInheritanceInfo, CommandBufferInheritanceRenderPassType, CommandBufferInheritanceRenderingInfo, CommandBufferUsage, PrimaryAutoCommandBuffer, PrimaryCommandBufferAbstract, RenderingAttachmentInfo, RenderingInfo, ResolveImageInfo, SecondaryAutoCommandBuffer};
 use vulkano::descriptor_set::allocator::{StandardDescriptorSetAllocator, StandardDescriptorSetAllocatorCreateInfo};
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::device::{Device, Queue};
-use vulkano::format::Format;
+use vulkano::format::{ClearDepthStencilValue, Format};
 use vulkano::image::sampler::{Sampler, SamplerCreateInfo};
 use vulkano::image::view::ImageView;
 use vulkano::image::{Image, ImageCreateInfo, ImageType, ImageUsage, SampleCount};
@@ -49,7 +49,6 @@ use vulkano::render_pass::{AttachmentLoadOp, AttachmentStoreOp};
 use vulkano::swapchain::{acquire_next_image, Surface, Swapchain, SwapchainAcquireFuture, SwapchainCreateInfo, SwapchainPresentInfo};
 use vulkano::sync::GpuFuture;
 use vulkano::{Validated, ValidationError, VulkanError};
-use crate::renderer::player_viewport::PlayerViewport;
 
 pub(crate) static OFFLINE_PIPELINE_COLOR_FORMAT: Format = Format::R8G8B8A8_UNORM;
 
@@ -220,7 +219,7 @@ impl VulkanRenderer {
                     format: Format::D32_SFLOAT,
                     image_type: ImageType::Dim2d,
                     samples: samples_per_pixel,
-                    usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT,
+                    usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT | ImageUsage::TRANSFER_DST,
                     ..Default::default()
                 },
                 AllocationCreateInfo::default(),
@@ -262,120 +261,50 @@ impl VulkanRenderer {
         image_future.wait(Some(Duration::from_millis(5000))).expect("waited too long");
         renderer.renderer.future.as_mut().unwrap().cleanup_finished();
 
-        // Clear this real quick
-        let default_background = [0.0f32, 0.0, 0.0, 1.0];
-        command_builder.begin_rendering(RenderingInfo {
-            color_attachments: vec![Some(RenderingAttachmentInfo {
-                load_op: AttachmentLoadOp::Clear,
-                store_op: AttachmentStoreOp::Store,
-                clear_value: Some(default_background.into()),
-                ..RenderingAttachmentInfo::image_view(images.color.clone())
-            })],
-            depth_attachment: Some(RenderingAttachmentInfo {
-                load_op: AttachmentLoadOp::Clear,
-                store_op: AttachmentStoreOp::Store,
-                clear_value: Some([1.0].into()),
-                ..RenderingAttachmentInfo::image_view(images.depth.clone())
-            }),
-            ..Default::default()
-        }).expect("failed to begin rendering");
-
         let (width, height) = (renderer.renderer.current_resolution.width as f32, renderer.renderer.current_resolution.height as f32);
 
-        for i in &renderer.player_viewports {
-            let cluster_index = currently_loaded_bsp.bsp_data.find_cluster(i.camera.position);
-            let cluster = cluster_index.map(|c| &currently_loaded_bsp.bsp_data.clusters[c]);
-            let sky = cluster.and_then(|c| c.sky.as_ref()).and_then(|s| renderer.skies.get(s));
+        command_builder.clear_depth_stencil_image(ClearDepthStencilImageInfo {
+            clear_value: ClearDepthStencilValue::from(1.0),
+            ..ClearDepthStencilImageInfo::image(images.depth.clone().image().clone())
+        }).expect("failed to clear depth image");
 
-            let mut fog_data;
-
-            if let Some(sky) = sky {
-                // TODO: determine which fog color
-                fog_data = FogData {
-                    color: [sky.outdoor_fog_color[0], sky.outdoor_fog_color[1], sky.outdoor_fog_color[2], 0.0],
-                    distance_from: sky.outdoor_fog_start_distance,
-                    distance_to: sky.outdoor_fog_opaque_distance,
-                    min_opacity: 0.0,
-                    max_opacity: sky.outdoor_fog_maximum_density,
-                }
-            }
-            else {
-                fog_data = FogData::default()
-            }
-
-            if !i.camera.fog {
-                fog_data = FogData::default();
-            }
+        for i in 0..renderer.player_viewports.len() {
+            let player_viewport = &renderer.player_viewports[i];
 
             let viewport = Viewport {
-                offset: [i.rel_x * width, i.rel_y * height],
-                extent: [i.rel_width * width, i.rel_height * height],
+                offset: [player_viewport.rel_x * width, player_viewport.rel_y * height],
+                extent: [player_viewport.rel_width * width, player_viewport.rel_height * height],
                 depth_range: 0.0..=1.0,
             };
 
-            let z_near = 0.0625;
-            let mut z_far = currently_loaded_bsp.draw_distance;
-
-            // Occlude things that won't be visible anyway
-            if fog_data.max_opacity == 1.0 {
-                z_far = z_far.min(fog_data.distance_to);
-            }
-
-            z_far = z_far.max(z_near + 1.0);
-            let proj = Mat4::perspective_lh(
-                i.camera.fov,
-                viewport.extent[0] / viewport.extent[1],
-                z_near,
-                z_far
+            Self::draw_viewport(
+                renderer,
+                images.color.clone(),
+                images.depth.clone(),
+                viewport,
+                &currently_loaded_bsp,
+                &mut command_builder,
+                player_viewport.camera.clone()
             );
-            let view = Mat4::look_to_lh(
-                i.camera.position.into(),
-                i.camera.rotation.into(),
-                Vec3::new(0.0, 0.0, -1.0)
-            );
-
-            command_builder.set_viewport(0, [viewport].into_iter().collect()).unwrap();
-
-            let sky_color = [fog_data.color[0], fog_data.color[1], fog_data.color[2], 1.0];
-            if sky_color != default_background {
-                draw_box(
-                    renderer,
-                    0.0,
-                    0.0,
-                    1.0,
-                    1.0,
-                    sky_color,
-                    &mut command_builder
-                ).unwrap();
-            }
-
-            upload_fog_uniform(renderer, &fog_data, &mut command_builder);
-
-            let geo_shader_iterator = currently_loaded_bsp
-                .geometry_indices_sorted_by_material
-                .iter()
-                .map(|g| &currently_loaded_bsp.geometries[*g])
-                .map(|g| (g, &renderer.shaders.get(&g.vulkan.shader).expect("no shader?").vulkan.pipeline_data));
-
-            let opaque = geo_shader_iterator.clone().filter(|s| !s.1.is_transparent());
-            let transparent = geo_shader_iterator.clone().filter(|s| s.1.is_transparent());
-
-            upload_main_material_uniform(renderer, i.camera.position.into(), Vec3::default(), Mat3::IDENTITY, view, proj, &mut command_builder);
-            command_builder.set_cull_mode(CullMode::Back).unwrap();
-
-            // Draw non-transparent shaders first
-            let mut last_shader = None;
-            for (geometry, shader) in opaque {
-                Self::draw_bsp_geometry(renderer, currently_loaded_bsp.as_ref(), &mut command_builder, i, &mut last_shader, geometry, shader);
-            }
-            for (geometry, shader) in transparent {
-                Self::draw_bsp_geometry(renderer, currently_loaded_bsp.as_ref(), &mut command_builder, i, &mut last_shader, geometry, shader);
-            }
         }
 
-        Self::draw_split_screen_bars(renderer, &mut command_builder, width, height);
-
-        command_builder.end_rendering().expect("failed to end rendering");
+        if renderer.player_viewports.len() > 1 {
+            command_builder.begin_rendering(RenderingInfo {
+                color_attachments: vec![Some(RenderingAttachmentInfo {
+                    load_op: AttachmentLoadOp::Load,
+                    store_op: AttachmentStoreOp::Store,
+                    ..RenderingAttachmentInfo::image_view(images.color.clone())
+                })],
+                depth_attachment: Some(RenderingAttachmentInfo {
+                    load_op: AttachmentLoadOp::Load,
+                    store_op: AttachmentStoreOp::Store,
+                    ..RenderingAttachmentInfo::image_view(images.depth.clone())
+                }),
+                ..Default::default()
+            }).expect("failed to begin rendering for split screen bars");
+            Self::draw_split_screen_bars(renderer, &mut command_builder, width, height);
+            command_builder.end_rendering().expect("failed to end rendering");
+        }
 
         let staging_image = if let Some(resolved_color_view) = images.resolve.as_ref().map(|iv| iv.image()) {
             command_builder.resolve_image(
@@ -430,11 +359,115 @@ impl VulkanRenderer {
         true
     }
 
+    fn draw_viewport(
+        renderer: &mut Renderer,
+        color_view: Arc<ImageView>,
+        depth_view: Arc<ImageView>,
+        viewport: Viewport,
+        currently_loaded_bsp: &BSP,
+        command_builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
+        camera: Camera
+    ) {
+        command_builder.set_viewport(0, [viewport.clone()].into_iter().collect()).unwrap();
+        command_builder.begin_rendering(RenderingInfo {
+            color_attachments: vec![Some(RenderingAttachmentInfo {
+                load_op: AttachmentLoadOp::Load,
+                store_op: AttachmentStoreOp::Store,
+                ..RenderingAttachmentInfo::image_view(color_view.clone())
+            })],
+            depth_attachment: Some(RenderingAttachmentInfo {
+                load_op: AttachmentLoadOp::Load,
+                store_op: AttachmentStoreOp::Store,
+                ..RenderingAttachmentInfo::image_view(depth_view.clone())
+            }),
+            ..Default::default()
+        }).expect("failed to begin rendering inside viewport w/out sky color");
+
+        let aspect_ratio = viewport.extent[0] / viewport.extent[1];
+
+        let cluster_index = currently_loaded_bsp.bsp_data.find_cluster(camera.position);
+        let cluster = cluster_index.map(|c| &currently_loaded_bsp.bsp_data.clusters[c]);
+        let sky = cluster.and_then(|c| c.sky.as_ref()).and_then(|s| renderer.skies.get(s));
+
+        let z_near = 0.0625;
+        let mut z_far = currently_loaded_bsp.draw_distance;
+        let fog_data;
+        if !camera.fog || sky.is_none() {
+            fog_data = FogData::default();
+        }
+        else {
+            let sky = sky.unwrap();
+
+            // TODO: determine which fog color
+            fog_data = FogData {
+                color: [sky.outdoor_fog_color[0], sky.outdoor_fog_color[1], sky.outdoor_fog_color[2], 0.0],
+                distance_from: sky.outdoor_fog_start_distance,
+                distance_to: sky.outdoor_fog_opaque_distance,
+                min_opacity: 0.0,
+                max_opacity: sky.outdoor_fog_maximum_density,
+            };
+
+            // Occlude things that won't be visible anyway
+            if fog_data.max_opacity == 1.0 {
+                z_far = z_far.min(fog_data.distance_to);
+            }
+        }
+
+        let sky_color = [fog_data.color[0], fog_data.color[1], fog_data.color[2], 1.0];
+        draw_box(
+            renderer,
+            0.0,
+            0.0,
+            1.0,
+            1.0,
+            sky_color,
+            command_builder
+        ).unwrap();
+
+        z_far = z_far.max(z_near + 1.0);
+        let proj = Mat4::perspective_lh(
+            camera.fov,
+            aspect_ratio,
+            z_near,
+            z_far
+        );
+        let view = Mat4::look_to_lh(
+            camera.position.into(),
+            camera.rotation.into(),
+            Vec3::new(0.0, 0.0, -1.0)
+        );
+
+        upload_fog_uniform(renderer, &fog_data, command_builder);
+
+        let geo_shader_iterator = currently_loaded_bsp
+            .geometry_indices_sorted_by_material
+            .iter()
+            .map(|g| &currently_loaded_bsp.geometries[*g])
+            .map(|g| (g, &renderer.shaders.get(&g.vulkan.shader).expect("no shader?").vulkan.pipeline_data));
+
+        let opaque = geo_shader_iterator.clone().filter(|s| !s.1.is_transparent());
+        let transparent = geo_shader_iterator.clone().filter(|s| s.1.is_transparent());
+
+        upload_main_material_uniform(renderer, camera.position.into(), Vec3::default(), Mat3::IDENTITY, view, proj, command_builder);
+        command_builder.set_cull_mode(CullMode::Back).unwrap();
+
+        // Draw non-transparent shaders first
+        let mut last_shader = None;
+        for (geometry, shader) in opaque {
+            Self::draw_bsp_geometry(renderer, currently_loaded_bsp, command_builder, &camera, &mut last_shader, geometry, shader);
+        }
+        for (geometry, shader) in transparent {
+            Self::draw_bsp_geometry(renderer, currently_loaded_bsp, command_builder, &camera, &mut last_shader, geometry, shader);
+        }
+
+        command_builder.end_rendering().expect("failed to end rendering inside viewport");
+    }
+
     fn draw_bsp_geometry<'a, 'b>(
         renderer: &Renderer,
         currently_loaded_bsp: &'a BSP,
         mut command_builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
-        i: &PlayerViewport,
+        camera: &Camera,
         last_shader: &'b mut Option<&'a Arc<String>>,
         geometry: &'a BSPGeometry,
         shader: &Arc<dyn VulkanMaterial>
@@ -443,12 +476,13 @@ impl VulkanRenderer {
         let repeat_shader = if *last_shader != Some(this_shader) {
             *last_shader = Some(this_shader);
             false
-        } else {
+        }
+        else {
             true
         };
 
         let mut desired_lightmap = geometry.lightmap_index;
-        if !i.camera.lightmaps {
+        if !camera.lightmaps {
             desired_lightmap = None;
         }
 
