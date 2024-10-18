@@ -233,10 +233,10 @@ fn main() -> Result<(), String> {
         scenario_data,
         viewports,
         camera_velocity: Arc::new([
-            [AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(1.0f32.to_bits())],
-            [AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(1.0f32.to_bits())],
-            [AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(1.0f32.to_bits())],
-            [AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(1.0f32.to_bits())],
+            [AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0)],
+            [AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0)],
+            [AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0)],
+            [AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0)],
         ]),
         pause_rendering_flag: Arc::new(AtomicBool::new(false)),
     };
@@ -272,6 +272,8 @@ fn main() -> Result<(), String> {
 
         [forward, side, up]
     }
+
+    let shift_speedup = 4.0;
 
     loop {
         if let Ok(frames_per_second) = fps_receive.try_recv() {
@@ -393,7 +395,7 @@ fn main() -> Result<(), String> {
                 handler.camera_velocity[viewport_mod][2].swap(result[2].to_bits(), Ordering::Relaxed);
 
                 if keycode == Some(Keycode::LShift) {
-                    let increased = f32::from_bits(handler.camera_velocity[0][3].load(Ordering::Relaxed)) * 4.0;
+                    let increased = f32::from_bits(handler.camera_velocity[0][3].load(Ordering::Relaxed)) + shift_speedup;
                     handler.camera_velocity[viewport_mod][3].swap(increased.to_bits(), Ordering::Relaxed);
                 }
             }
@@ -417,7 +419,7 @@ fn main() -> Result<(), String> {
                 handler.camera_velocity[viewport_mod][2].swap(result[2].to_bits(), Ordering::Relaxed);
 
                 if keycode == Some(Keycode::LShift) {
-                    let reduced = f32::from_bits(handler.camera_velocity[viewport_mod][3].load(Ordering::Relaxed)) / 4.0;
+                    let reduced = f32::from_bits(handler.camera_velocity[viewport_mod][3].load(Ordering::Relaxed)) - shift_speedup;
                     handler.camera_velocity[viewport_mod][3].swap(reduced.to_bits(), Ordering::Relaxed);
                 }
             }
@@ -445,8 +447,17 @@ fn main() -> Result<(), String> {
 
                 let mut multiplier = f32::from_bits(handler.camera_velocity[viewport_mod][3].load(Ordering::Relaxed));
 
-                multiplier += (incrementor as f32) * if shift { 4.0 } else { 1.0 } * 0.125;
-                handler.camera_velocity[viewport_mod][3].swap(multiplier.max(1.0).to_bits(), Ordering::Relaxed);
+                multiplier += (incrementor as f32) * 0.125;
+
+                let mut min = -20.0;
+                let mut max = 24.0;
+
+                if shift {
+                    min += shift_speedup;
+                    max += shift_speedup;
+                }
+
+                handler.camera_velocity[viewport_mod][3].swap(multiplier.clamp(min, max).to_bits(), Ordering::Relaxed);
             }
             _ => {
 
@@ -1055,7 +1066,8 @@ fn run_renderer_thread(renderer: Weak<Mutex<Renderer>>, pause_rendering: Arc<Ato
             let vel = &velocity[v];
             let rot = &rotate_deltas[v];
 
-            let multiplier = f32::from_bits(vel[3].load(Ordering::Relaxed));
+            let multiplier = 1.25f32.powf(f32::from_bits(vel[3].load(Ordering::Relaxed)));
+
             let delta = (ms_since_start - last_loop) as f32 * 2.0 * multiplier;
             let forward = f32::from_bits(vel[0].load(Ordering::Relaxed)) * delta;
             let side = f32::from_bits(vel[1].load(Ordering::Relaxed)) * delta;
