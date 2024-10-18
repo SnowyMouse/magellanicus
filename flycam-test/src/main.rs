@@ -396,6 +396,7 @@ fn main() -> Result<(), String> {
 
                 if keycode == Some(Keycode::LShift) {
                     let increased = f32::from_bits(handler.camera_velocity[0][3].load(Ordering::Relaxed)) + shift_speedup;
+                    println!("Camera #{viewport_mod} speed: {}x", camera_multiplier(increased));
                     handler.camera_velocity[viewport_mod][3].swap(increased.to_bits(), Ordering::Relaxed);
                 }
             }
@@ -420,6 +421,7 @@ fn main() -> Result<(), String> {
 
                 if keycode == Some(Keycode::LShift) {
                     let reduced = f32::from_bits(handler.camera_velocity[viewport_mod][3].load(Ordering::Relaxed)) - shift_speedup;
+                    println!("Camera #{viewport_mod} speed: {}x", camera_multiplier(reduced));
                     handler.camera_velocity[viewport_mod][3].swap(reduced.to_bits(), Ordering::Relaxed);
                 }
             }
@@ -447,7 +449,7 @@ fn main() -> Result<(), String> {
 
                 let mut multiplier = f32::from_bits(handler.camera_velocity[viewport_mod][3].load(Ordering::Relaxed));
 
-                multiplier += (incrementor as f32) * 0.125;
+                multiplier += (incrementor as f32) * 0.25;
 
                 let mut min = -20.0;
                 let mut max = 24.0;
@@ -457,7 +459,11 @@ fn main() -> Result<(), String> {
                     max += shift_speedup;
                 }
 
-                handler.camera_velocity[viewport_mod][3].swap(multiplier.clamp(min, max).to_bits(), Ordering::Relaxed);
+                multiplier = multiplier.clamp(min, max);
+
+                println!("Camera #{viewport_mod} speed: {}x", camera_multiplier(multiplier));
+
+                handler.camera_velocity[viewport_mod][3].swap(multiplier.to_bits(), Ordering::Relaxed);
             }
             _ => {
 
@@ -1066,7 +1072,7 @@ fn run_renderer_thread(renderer: Weak<Mutex<Renderer>>, pause_rendering: Arc<Ato
             let vel = &velocity[v];
             let rot = &rotate_deltas[v];
 
-            let multiplier = 1.25f32.powf(f32::from_bits(vel[3].load(Ordering::Relaxed)));
+            let multiplier = camera_multiplier(f32::from_bits(vel[3].load(Ordering::Relaxed)));
 
             let delta = (ms_since_start - last_loop) as f32 * 2.0 * multiplier;
             let forward = f32::from_bits(vel[0].load(Ordering::Relaxed)) * delta;
@@ -1176,4 +1182,9 @@ fn parse_resolution(resolution_string: String) -> Result<Resolution, String> {
         return Err(format!("Invalid resolution {resolution_string}; at least one dimension is zero"));
     }
     Ok(Resolution { width, height })
+}
+
+#[inline(always)]
+fn camera_multiplier(v: f32) -> f32 {
+    1.25f32.powf(v)
 }
